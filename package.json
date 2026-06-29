@@ -1,0 +1,47 @@
+{
+  "name": "stock-production-residence",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.4.0",
+    "@radix-ui/react-slot": "^1.3.0",
+    "@supabase/supabase-js": "^2.108.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.4.0",
+    "jspdf": "^4.2.1",
+    "lucide-react": "^1.21.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-hook-form": "^7.80.0",
+    "react-hot-toast": "^2.6.0",
+    "react-router-dom": "^7.18.0",
+    "tailwind-merge": "^3.6.0",
+    "xlsx": "^0.18.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.13.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^10.5.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^17.6.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.61.0",
+    "vite": "^8.1.0"
+  }
+}
