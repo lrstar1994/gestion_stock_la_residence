@@ -247,8 +247,13 @@ export async function integratePendingReceptionMovements(profileId: string) {
   const integratedReceptionIds = new Set<string>()
   for (const pending of data ?? []) {
     if (!['validee', 'validee_avec_anomalies'].includes(pending.receptions?.status)) continue
-    const { data: existing } = await supabase.schema('stock').from('stock_movements').select('id').eq('reception_item_id', pending.reception_item_id).limit(1)
-    if ((existing ?? []).length > 0) continue
+    const { data: existing, error: existingError } = await supabase.schema('stock').from('stock_movements').select('id').eq('reception_item_id', pending.reception_item_id).limit(1)
+    if (existingError) throw existingError
+    if ((existing ?? []).length > 0) {
+      await supabase.schema('stock').from('stock_pending_movements').update({ status: 'integrated' }).eq('id', pending.id)
+      integratedReceptionIds.add(pending.reception_id)
+      continue
+    }
     const { error: insertError } = await supabase.schema('stock').from('stock_movements').insert({
       article_id: pending.article_id,
       quantity: pending.quantity,
