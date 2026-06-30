@@ -136,11 +136,26 @@ export async function updateReception(id: string, values: ReceptionFormValues, p
 }
 
 function validateReceptionValues(values: ReceptionFormValues) {
+  if (!values.supplier_id.trim()) {
+    throw new Error('Veuillez selectionner un fournisseur')
+  }
+  if (!values.location_id.trim()) {
+    throw new Error('Veuillez selectionner une localisation de reception')
+  }
   if (!values.invoice_number.trim()) {
     throw new Error('Veuillez saisir un numéro de facture')
   }
+  if (values.items.length === 0) {
+    throw new Error('Veuillez ajouter au moins un article')
+  }
 
   for (const item of values.items) {
+    if (!item.article_id.trim()) {
+      throw new Error('Veuillez selectionner un article')
+    }
+    if (!item.unit_id.trim()) {
+      throw new Error("Veuillez selectionner l'unite")
+    }
     if (Number(item.unit_price_real) <= 0) {
       throw new Error('Le prix réel doit être supérieur à 0')
     }

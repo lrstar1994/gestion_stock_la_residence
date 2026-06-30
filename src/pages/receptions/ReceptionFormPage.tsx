@@ -27,6 +27,10 @@ const emptyForm: ReceptionFormValues = {
   items: [],
 }
 
+function normalizeName(value?: string | null) {
+  return value?.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() ?? ''
+}
+
 export function ReceptionFormPage() {
   const { id } = useParams()
   const [searchParams] = useSearchParams()
@@ -67,10 +71,14 @@ export function ReceptionFormPage() {
   }, [])
 
   const selectCashPurchase = useCallback((cashPurchase: CashPurchase, fallbackLocationId = '') => {
+    const supplierName = cashPurchase.cash_purchase_items?.map((item) => item.supplier).find(Boolean)
+    const matchedSupplier = suppliers.find((supplier) => normalizeName(supplier.name) === normalizeName(supplierName))
+
     setValues((current) => ({
       ...current,
       cash_purchase_id: cashPurchase.id,
       purchase_order_id: '',
+      supplier_id: matchedSupplier?.id ?? current.supplier_id,
       location_id: current.location_id || fallbackLocationId,
       invoice_number: cashPurchase.cash_purchase_items?.[0]?.invoice_number ?? current.invoice_number,
       invoice_date: cashPurchase.cash_purchase_items?.[0]?.invoice_date ?? current.invoice_date,
@@ -88,7 +96,7 @@ export function ReceptionFormPage() {
         anomalies: [],
       })) ?? [],
     }))
-  }, [])
+  }, [suppliers])
 
   const load = useCallback(async () => {
     const [articlesResult, loadedSuppliers, loadedLocations, loadedOrders, loadedCashPurchases, defaultLocation] = await Promise.all([
