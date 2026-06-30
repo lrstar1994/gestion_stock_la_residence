@@ -328,14 +328,11 @@ async function applyReceptionSideEffects(id: string, profileId?: string) {
 }
 
 async function refreshPurchaseOrderStatus(orderId: string, profileId?: string) {
-  const { data, error } = await supabase.schema('stock').from('purchase_order_items').select('quantity_ordered, quantity_received').eq('purchase_order_id', orderId)
+  const { error } = await supabase.schema('stock').rpc('refresh_purchase_order_status_from_items', {
+    p_order_id: orderId,
+    p_profile_id: profileId ?? null,
+  })
   if (error) throw error
-  const items = data ?? []
-  const allReceived = items.length > 0 && items.every((item) => Number(item.quantity_received ?? 0) >= Number(item.quantity_ordered ?? 0))
-  const anyReceived = items.some((item) => Number(item.quantity_received ?? 0) > 0)
-  const status = allReceived ? 'livree' : anyReceived ? 'partiellement_livree' : 'envoyee'
-  const { error: updateError } = await supabase.schema('stock').from('purchase_orders').update({ status, updated_by: profileId }).eq('id', orderId)
-  if (updateError) throw updateError
 }
 
 export async function uploadReceptionAnomalyPhoto(file: File) {
