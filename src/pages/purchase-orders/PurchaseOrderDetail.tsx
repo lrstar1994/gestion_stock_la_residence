@@ -63,9 +63,13 @@ export function PurchaseOrderDetail() {
   }
 
   const receive = async () => {
-    await receivePurchaseOrder(order.id, items, profile?.id)
-    toast.success('Reception enregistree avec succes')
-    await load()
+    try {
+      const receptionId = await receivePurchaseOrder(order.id, items, profile?.id)
+      toast.success('Reception creee avec succes')
+      navigate(`/receptions/${receptionId}`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Reception impossible')
+    }
   }
 
   const cancel = async () => {

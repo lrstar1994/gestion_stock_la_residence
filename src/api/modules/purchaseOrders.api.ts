@@ -1,8 +1,10 @@
 import { supabase } from '../../lib/supabase'
 import { calculateOrderTotal } from '../../lib/purchaseOrders'
 import type { PurchaseOrder, PurchaseOrderFormValues, PurchaseOrderItem, PurchaseOrderStatus } from '../../lib/purchaseOrders'
+import type { AnomalyType, ReceptionFormValues } from '../../lib/receptions'
 import { compressReceiptFile } from '../../lib/imageCompression'
 import type { PurchaseGroup, PurchaseNeedGlobal } from '../../lib/purchaseNeeds'
+import { createReception, listDefaultReceptionLocation, submitReception } from './receptions.api'
 
 const PURCHASE_ORDER_FILES_BUCKET = 'purchase-order-files'
 
@@ -199,20 +201,58 @@ export async function sendPurchaseOrder(id: string, profileId?: string, fileUrl?
 }
 
 export async function receivePurchaseOrder(id: string, items: PurchaseOrderItem[], profileId?: string) {
-  let hasMissing = false
-  let hasOver = false
+  const order = await getPurchaseOrder(id)
+  const defaultLocation = await listDefaultReceptionLocation()
+  if (!defaultLocation?.id) throw new Error('Localisation de reception par defaut introuvable')
+
+  const today = new Date().toISOString().slice(0, 10)
+  const currentItems = order.purchase_order_items ?? []
+  const receptionItems: ReceptionFormValues['items'] = []
 
   for (const item of items) {
     if (!item.id) continue
-    const received = Number(item.quantity_received ?? 0)
-    const ordered = Number(item.quantity_ordered ?? 0)
-    const hasLineDifference = received !== ordered || Boolean(item.difference_type)
-    if (received < ordered) hasMissing = true
-    if (received > ordered) hasOver = true
+
+    const currentItem = currentItems.find((current) => current.id === item.id)
+    if (!currentItem) continue
+
+    const targetReceived = Number(item.quantity_received ?? 0)
+    const alreadyReceived = Number(currentItem.quantity_received ?? 0)
+    const ordered = Number(currentItem.quantity_ordered ?? 0)
+    const quantityToReceive = targetReceived - alreadyReceived
+
+    if (targetReceived < alreadyReceived) {
+      throw new Error('La quantite recue ne peut pas etre inferieure a la quantite deja receptionnee')
+    }
+    if (targetReceived > ordered) {
+      throw new Error('La quantite recue ne peut pas depasser la quantite commandee')
+    }
+    if (quantityToReceive <= 0) continue
+
+    const hasLineDifference = Boolean(item.difference_type) || Boolean(item.difference_comment)
+    const differenceDescription = cleanNullable(item.difference_comment) ?? 'Ecart signale depuis la commande fournisseur'
+    const anomalyType = mapOrderDifferenceToReceptionAnomaly(item.difference_type)
+
+    receptionItems.push({
+      article_id: currentItem.article_id,
+      quantity_ordered: Math.max(0, ordered - alreadyReceived),
+      quantity_delivered: quantityToReceive,
+      quantity_accepted: quantityToReceive,
+      unit_id: currentItem.unit_id,
+      unit_price_planned: Number(currentItem.unit_price ?? 0),
+      unit_price_real: Number(currentItem.unit_price ?? 0),
+      quality: hasLineDifference ? 'a_verifier' : 'conforme',
+      quality_comment: hasLineDifference ? differenceDescription : '',
+      has_anomaly: hasLineDifference,
+      anomalies: hasLineDifference ? [{
+        anomaly_type: anomalyType,
+        description: differenceDescription,
+        photo_url: '',
+      }] : [],
+    })
+
     const { error } = await supabase.schema('stock')
       .from('purchase_order_items')
       .update({
-        quantity_received: received,
         difference_type: cleanNullable(item.difference_type ?? null),
         difference_comment: cleanNullable(item.difference_comment),
         difference_status: hasLineDifference ? item.difference_status === 'valide' ? 'valide' : 'a_justifier' : 'aucun',
@@ -221,11 +261,32 @@ export async function receivePurchaseOrder(id: string, items: PurchaseOrderItem[
     if (error) throw error
   }
 
-  const hasExplicitDifference = items.some((item) => Boolean(item.difference_type) || Boolean(item.difference_comment))
-  const status: PurchaseOrderStatus = hasOver || hasExplicitDifference ? 'reception_avec_ecart' : hasMissing ? 'partiellement_livree' : 'livree'
-  const { error } = await supabase.schema('stock').from('purchase_orders').update({ status, updated_by: profileId }).eq('id', id)
-  if (error) throw error
-  await addOrderHistory(id, 'reception', `Reception enregistree (${status})`, profileId)
+  if (receptionItems.length === 0) {
+    throw new Error('Aucune nouvelle quantite a receptionner')
+  }
+
+  const receptionId = await createReception({
+    supplier_id: order.supplier_id,
+    reception_date: today,
+    invoice_number: `AUTO-${order.reference}-${Date.now()}`,
+    invoice_date: today,
+    location_id: defaultLocation.id,
+    comment: `Reception automatique creee depuis la commande ${order.reference}`,
+    purchase_order_id: order.id,
+    cash_purchase_id: '',
+    items: receptionItems,
+  }, profileId)
+
+  await submitReception(receptionId, profileId)
+  await addOrderHistory(id, 'reception', `Reception officielle creee depuis la commande (${receptionId})`, profileId)
+  return receptionId
+}
+
+function mapOrderDifferenceToReceptionAnomaly(type?: PurchaseOrderItem['difference_type'] | null): AnomalyType {
+  if (type === 'quantite_manquante') return 'quantite_manquante'
+  if (type === 'produit_non_conforme') return 'produit_non_conforme'
+  if (type === 'prix_different') return 'prix_different'
+  return 'erreur_facture'
 }
 
 export async function cancelPurchaseOrder(id: string, profileId: string | undefined, reason: string) {
