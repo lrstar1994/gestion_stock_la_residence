@@ -148,13 +148,36 @@ export function CashPurchaseDetail() {
         </div>
         <div className="divide-y divide-slate-200">
           {items.map((item) => (
-            <div key={item.id} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_100px_130px_100px_130px_130px] xl:items-center">
-              <span className="font-semibold">{item.articles?.name}</span>
-              <span>{Number(item.quantity_planned).toLocaleString('fr-FR')} {item.units?.abbreviation}</span>
-              <span>{Number(item.unit_price_estimated).toLocaleString('fr-FR')} Ar</span>
-              <input disabled={!canReturn || purchase.status !== 'especes_remises'} value={Number(item.quantity_bought ?? 0)} onChange={(event) => updateItem(item.id, { quantity_bought: Number(event.target.value) })} type="number" className="input" />
-              <input disabled={!canReturn || purchase.status !== 'especes_remises'} value={Number(item.unit_price_real ?? 0)} onChange={(event) => updateItem(item.id, { unit_price_real: Number(event.target.value) })} type="number" className="input" />
-              <span>{(Number(item.quantity_bought ?? 0) * Number(item.unit_price_real ?? 0)).toLocaleString('fr-FR')} Ar</span>
+            <div key={item.id} className="px-5 py-4">
+              <div className="grid gap-3 xl:grid-cols-[1fr_100px_130px_100px_130px_130px] xl:items-center">
+                <span className="font-semibold">{item.articles?.name}</span>
+                <span>{Number(item.quantity_planned).toLocaleString('fr-FR')} {item.units?.abbreviation}</span>
+                <span>{Number(item.unit_price_estimated).toLocaleString('fr-FR')} Ar</span>
+                <input disabled={!canReturn || purchase.status !== 'especes_remises'} value={Number(item.quantity_bought ?? 0)} onChange={(event) => updateItem(item.id, { quantity_bought: Number(event.target.value) })} type="number" className="input" aria-label={`Quantite achetee ${item.articles?.name ?? ''}`} />
+                <input disabled={!canReturn || purchase.status !== 'especes_remises'} value={Number(item.unit_price_real ?? 0)} onChange={(event) => updateItem(item.id, { unit_price_real: Number(event.target.value) })} type="number" className="input" aria-label={`Prix reel ${item.articles?.name ?? ''}`} />
+                <span>{(Number(item.quantity_bought ?? 0) * Number(item.unit_price_real ?? 0)).toLocaleString('fr-FR')} Ar</span>
+              </div>
+
+              {canReturn && purchase.status === 'especes_remises' && (
+                <div className="mt-3 grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 md:grid-cols-4">
+                  <label className="block">
+                    <span className="field-label">Fournisseur</span>
+                    <input value={item.supplier ?? ''} onChange={(event) => updateItem(item.id, { supplier: event.target.value })} className="input mt-2 bg-white" placeholder="Nom fournisseur" />
+                  </label>
+                  <label className="block">
+                    <span className="field-label">Facture / recu</span>
+                    <input value={item.invoice_number ?? ''} onChange={(event) => updateItem(item.id, { invoice_number: event.target.value })} className="input mt-2 bg-white" placeholder="Numero recu" />
+                  </label>
+                  <label className="block">
+                    <span className="field-label">Date facture</span>
+                    <input value={item.invoice_date ?? ''} onChange={(event) => updateItem(item.id, { invoice_date: event.target.value })} type="date" className="input mt-2 bg-white" />
+                  </label>
+                  <label className="block">
+                    <span className="field-label">Commentaire</span>
+                    <input value={item.comment ?? ''} onChange={(event) => updateItem(item.id, { comment: event.target.value })} className="input mt-2 bg-white" placeholder="Observation" />
+                  </label>
+                </div>
+              )}
             </div>
           ))}
         </div>
