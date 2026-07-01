@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { roleLabels } from '../lib/validation'
 import { canViewSuppliers } from '../lib/suppliers'
+import { useMenuNotifications } from '../hooks/useMenuNotifications'
 
 const navItems = [
   { to: '/dashboard', label: 'Tableau de bord' },
@@ -25,7 +26,7 @@ const navItems = [
 ]
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
-  `flex items-center rounded-md px-3 py-2.5 text-sm font-semibold transition ${
+  `flex items-center justify-between gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition ${
     isActive
       ? 'bg-white text-[#1E3A8A] shadow-sm'
       : 'text-blue-50 hover:bg-white/10 hover:text-white'
@@ -34,6 +35,7 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 export function AppLayout() {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
+  const notifications = useMenuNotifications(profile?.role)
 
   const handleLogout = async () => {
     await signOut()
@@ -59,7 +61,8 @@ export function AppLayout() {
           <div className="mt-4 flex gap-2 overflow-x-auto pb-1 lg:mt-8 lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-y-auto lg:overflow-x-hidden lg:pr-1 lg:pb-4">
             {navItems.map((item) => (
               <NavLink key={item.to} to={item.to} className={linkClass}>
-                {item.label}
+                <span className="truncate">{item.label}</span>
+                <MenuBadge count={notifications[item.to]} />
               </NavLink>
             ))}
             {profile?.role === 'direction' && (
@@ -74,7 +77,8 @@ export function AppLayout() {
                   Localisations
                 </NavLink>
                 <NavLink to="/admin/users" className={linkClass}>
-                  Utilisateurs
+                  <span className="truncate">Utilisateurs</span>
+                  <MenuBadge count={notifications['/admin/users']} />
                 </NavLink>
                 <NavLink to="/audit/inter-modules" className={linkClass}>
                   Audit inter-modules
@@ -118,5 +122,14 @@ export function AppLayout() {
         </button>
       </div>
     </div>
+  )
+}
+
+function MenuBadge({ count }: { count?: number }) {
+  if (!count) return null
+  return (
+    <span className="ml-auto inline-flex min-w-5 shrink-0 items-center justify-center rounded-full bg-[#D4AF37] px-1.5 py-0.5 text-[11px] font-black leading-none text-[#10285f]">
+      {count > 99 ? '99+' : count}
+    </span>
   )
 }
