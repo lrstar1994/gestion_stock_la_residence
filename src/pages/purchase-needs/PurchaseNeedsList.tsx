@@ -79,6 +79,8 @@ export function PurchaseNeedsList() {
   }), [needs])
 
   const toggleSelection = (id: string) => {
+    const need = needs.find((item) => item.id === id)
+    if (!need || ['regroupe', 'refuse', 'annule'].includes(need.status)) return
     setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
   }
 
@@ -174,9 +176,11 @@ export function PurchaseNeedsList() {
           <span></span><span>Besoin</span><span>Quantite</span><span>Origine</span><span>Budget</span><span>Demandeur</span><span>Actions</span>
         </div>
         <div className="divide-y divide-slate-200">
-          {needs.map((need) => (
+          {needs.map((need) => {
+            const selectable = !['regroupe', 'refuse', 'annule'].includes(need.status)
+            return (
             <div key={need.id} className={`grid gap-4 px-5 py-4 xl:grid-cols-[44px_1.45fr_0.9fr_1fr_1fr_0.9fr_120px] xl:items-center ${isNeedExpired(need) ? 'bg-red-50/80' : 'hover:bg-slate-50'}`}>
-              <input type="checkbox" checked={selectedIds.includes(need.id)} onChange={() => toggleSelection(need.id)} className="mt-1 h-4 w-4 xl:mt-0" />
+              <input type="checkbox" checked={selectedIds.includes(need.id)} disabled={!selectable} title={selectable ? 'Selectionner' : 'Besoin deja traite'} onChange={() => toggleSelection(need.id)} className="mt-1 h-4 w-4 disabled:cursor-not-allowed disabled:opacity-40 xl:mt-0" />
 
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
@@ -218,7 +222,8 @@ export function PurchaseNeedsList() {
                 {canValidate && need.status === 'a_faire' && <button type="button" onClick={() => refuseOne(need.id)} className="btn-secondary text-red-700"><XCircle className="h-4 w-4" /></button>}
               </div>
             </div>
-          ))}
+            )
+          })}
           {needs.length === 0 && <p className="p-5 text-sm text-slate-600">Aucun besoin trouve.</p>}
         </div>
       </section>

@@ -173,6 +173,9 @@ export async function groupPurchaseNeeds(ids: string[], supplierId: string, prof
   const { data: needsData, error: needsError } = await supabase.schema('stock').from('purchase_needs').select('*').in('id', ids)
   if (needsError) throw needsError
   const needs = (needsData ?? []) as PurchaseNeedGlobal[]
+  if (needs.length !== ids.length || needs.some((need) => need.status !== 'valide')) {
+    throw new Error('Seuls les besoins valides peuvent etre regroupes')
+  }
   const total = needs.reduce((sum, need) => sum + Number(need.estimated_cost ?? 0), 0)
 
   const { data: supplier, error: supplierError } = await supabase.schema('stock').from('suppliers').select('*').eq('id', supplierId).single()
