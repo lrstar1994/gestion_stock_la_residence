@@ -70,6 +70,7 @@ export type Article = {
   packaging: string | null
   default_supplier: string | null
   min_stock: number
+  sellable_without_transformation: boolean
   status: ArticleStatus
   created_at: string
   updated_at: string
@@ -109,6 +110,7 @@ export const articleSchema = z.object({
   packaging: z.string().optional(),
   default_supplier: z.string().optional(),
   min_stock: z.number().min(0, 'Le stock minimum doit etre positif'),
+  sellable_without_transformation: z.boolean(),
   status: z.enum(articleStatuses),
   location_ids: z.array(z.string()).min(1, 'Selectionnez au moins une localisation'),
 })

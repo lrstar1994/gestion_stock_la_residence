@@ -17,6 +17,7 @@ type ArticleFilters = {
   search?: string
   familyId?: string
   status?: ArticleStatus | 'all'
+  sellableWithoutTransformation?: boolean
   page?: number
   pageSize?: number
 }
@@ -99,6 +100,7 @@ export async function listSubCategories(familyId?: string, search = '') {
   let query = supabase.schema('stock')
     .from('sub_categories')
     .select('*, families(id, name)')
+    .order('family_id', { ascending: true })
     .order('name', { ascending: true })
 
   if (familyId && familyId !== 'all') {
@@ -343,6 +345,10 @@ export async function listArticles(filters: ArticleFilters = {}) {
     query = query.neq('status', 'archived')
   }
 
+  if (typeof filters.sellableWithoutTransformation === 'boolean') {
+    query = query.eq('sellable_without_transformation', filters.sellableWithoutTransformation)
+  }
+
   if (filters.search?.trim()) {
     const term = filters.search.trim()
     const { data: matchingFamilies, error: familySearchError } = await supabase.schema('stock')
@@ -396,6 +402,7 @@ export async function createArticle(values: ArticleFormValues, profileId?: strin
       packaging: cleanNullable(values.packaging),
       default_supplier: cleanNullable(values.default_supplier),
       min_stock: values.min_stock,
+      sellable_without_transformation: values.sellable_without_transformation,
       status: values.status,
       created_by: profileId,
       updated_by: profileId,
@@ -422,6 +429,7 @@ export async function updateArticle(id: string, values: ArticleFormValues, profi
       packaging: cleanNullable(values.packaging),
       default_supplier: cleanNullable(values.default_supplier),
       min_stock: values.min_stock,
+      sellable_without_transformation: values.sellable_without_transformation,
       status: values.status,
       updated_by: profileId,
     })

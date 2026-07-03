@@ -154,8 +154,8 @@ export function SubCategoriesPage() {
             <div className="divide-y divide-slate-200">
               {subCategories.map((subCategory) => (
                 <article key={subCategory.id} className="grid gap-3 p-4 xl:grid-cols-[1fr_1fr_110px_110px] xl:items-center">
+                  <p className="text-sm font-semibold text-slate-700">{subCategory.families?.name || '-'}</p>
                   <p className="font-semibold text-slate-950">{subCategory.name}</p>
-                  <p className="text-sm text-slate-700">{subCategory.families?.name || '-'}</p>
                   <p className="text-sm text-slate-700">{subCategory.articles_count ?? 0} article(s)</p>
                   <div className="flex gap-2">
                     <button type="button" onClick={() => startEdit(subCategory)} className="btn-secondary px-3 py-2" aria-label="Modifier">

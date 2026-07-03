@@ -115,6 +115,7 @@ export function PendingIngredientsPage() {
           packaging: '',
           default_supplier: '',
           min_stock: 0,
+          sellable_without_transformation: false,
           status: 'active',
           location_ids: [defaultLocation.id],
         },

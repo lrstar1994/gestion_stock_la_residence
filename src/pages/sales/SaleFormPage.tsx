@@ -52,7 +52,7 @@ export function SaleFormPage() {
 
   useEffect(() => {
     Promise.all([
-      listArticles({ page: 1, pageSize: 1000, status: 'active' }),
+      listArticles({ page: 1, pageSize: 1000, status: 'active', sellableWithoutTransformation: true }),
       listLocations(),
       listEvents({ page: 1, pageSize: 100, status: 'planifie' }),
       listRecipes({ page: 1, pageSize: 1000, status: 'validee' }),
@@ -167,7 +167,7 @@ export function SaleFormPage() {
               <div key={`${item.article_id}-${index}`} className="space-y-3 px-5 py-4">
                 <div className="grid gap-3 xl:grid-cols-[150px_1fr_100px_100px_130px_120px_120px_44px] xl:items-end">
                   <label><span className="field-label">Type</span><select value={item.product_type} onChange={(event) => changeProductType(index, event.target.value as ProductType)} className="input mt-2">{productTypes.map((type) => <option key={type} value={type}>{productTypeLabels[type]}</option>)}</select></label>
-                  <label><span className="field-label">Article stock</span><select value={item.article_id} onChange={(event) => changeArticle(index, event.target.value)} className="input mt-2"><option value="">Article</option>{articles.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
+                  <label><span className="field-label">Article stock</span><select value={item.article_id} onChange={(event) => changeArticle(index, event.target.value)} className="input mt-2"><option value="">Article a vendre sans transformation</option>{articles.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
                   <label><span className="field-label">Quantite</span><input type="number" value={item.quantity} onChange={(event) => updateItem(index, { quantity: Number(event.target.value) })} className="input mt-2" /></label>
                   <label><span className="field-label">Offert</span><input type="number" value={item.quantity_offered} onChange={(event) => updateItem(index, { quantity_offered: Number(event.target.value) })} className="input mt-2" /></label>
                   <label><span className="field-label">Prix</span><input type="number" value={item.unit_price} onChange={(event) => updateItem(index, { unit_price: Number(event.target.value) })} className="input mt-2" /></label>
@@ -194,6 +194,7 @@ export function SaleFormPage() {
             )
           })}
           {values.items.length === 0 && <p className="p-5 text-sm text-slate-600">Aucun article.</p>}
+          {articles.length === 0 && <p className="px-5 pb-5 text-sm font-semibold text-amber-700">Aucun article coche "A vendre sans transformation" n'est disponible pour la vente.</p>}
         </div>
       </section>
 

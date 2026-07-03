@@ -9,6 +9,9 @@ import { useAuth } from '../../../hooks/useAuth'
 import { canManageSuppliers, supplierSchema } from '../../../lib/suppliers'
 import type { Supplier, SupplierFormValues } from '../../../lib/suppliers'
 
+const supplierGridClass =
+  'grid min-w-[1180px] grid-cols-[1.2fr_150px_130px_130px_140px_220px_1.4fr_110px] items-center gap-3'
+
 export function SuppliersPage() {
   const { profile } = useAuth()
   const canEdit = canManageSuppliers(profile?.role)
@@ -187,37 +190,52 @@ export function SuppliersPage() {
             </label>
           </div>
 
-          {loading ? (
-            <p className="p-5 text-sm text-slate-600">Chargement...</p>
-          ) : (
-            <div className="divide-y divide-slate-200">
-              {suppliers.map((supplier) => (
-                <article key={supplier.id} className="grid gap-3 p-4 xl:grid-cols-[1fr_140px_120px_120px_130px_180px_1fr_110px] xl:items-center">
-                  <div>
-                    <p className="font-semibold text-slate-950">{supplier.name}</p>
-                    {supplier.notes && <p className="mt-1 line-clamp-2 text-sm text-slate-500">{supplier.notes}</p>}
-                  </div>
-                  <p className="text-sm text-slate-700">{supplier.contact || '-'}</p>
-                  <p className="text-sm text-slate-700">{supplier.nif || '-'}</p>
-                  <p className="text-sm text-slate-700">{supplier.stat || '-'}</p>
-                  <p className="text-sm text-slate-700">{supplier.phone || '-'}</p>
-                  <p className="truncate text-sm text-slate-700">{supplier.email || '-'}</p>
-                  <p className="line-clamp-2 text-sm text-slate-700">{supplier.address || '-'}</p>
-                  {canEdit && (
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => startEdit(supplier)} className="btn-secondary px-3 py-2" aria-label="Modifier">
-                        <Edit2 className="h-4 w-4" />
-                      </button>
-                      <button type="button" onClick={() => handleDelete(supplier)} className="btn-secondary px-3 py-2 text-red-700" aria-label="Supprimer">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  )}
-                </article>
-              ))}
-              {suppliers.length === 0 && <p className="p-5 text-sm text-slate-600">Aucun fournisseur trouve.</p>}
+          <div className="overflow-x-auto">
+            <div className={`${supplierGridClass} border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500`}>
+              <span>Fournisseur</span>
+              <span>Contact</span>
+              <span>NIF</span>
+              <span>STAT</span>
+              <span>Telephone</span>
+              <span>Email</span>
+              <span>Adresse</span>
+              <span>Actions</span>
             </div>
-          )}
+
+            {loading ? (
+              <p className="min-w-[1180px] p-5 text-sm text-slate-600">Chargement...</p>
+            ) : (
+              <div className="divide-y divide-slate-200">
+                {suppliers.map((supplier) => (
+                  <article key={supplier.id} className={`${supplierGridClass} px-4 py-4`}>
+                    <div>
+                      <p className="font-semibold text-slate-950">{supplier.name}</p>
+                      {supplier.notes && <p className="mt-1 line-clamp-2 text-sm text-slate-500">{supplier.notes}</p>}
+                    </div>
+                    <p className="text-sm text-slate-700">{supplier.contact || '-'}</p>
+                    <p className="text-sm text-slate-700">{supplier.nif || '-'}</p>
+                    <p className="text-sm text-slate-700">{supplier.stat || '-'}</p>
+                    <p className="text-sm text-slate-700">{supplier.phone || '-'}</p>
+                    <p className="truncate text-sm text-slate-700">{supplier.email || '-'}</p>
+                    <p className="line-clamp-2 text-sm text-slate-700">{supplier.address || '-'}</p>
+                    {canEdit ? (
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => startEdit(supplier)} className="btn-secondary px-3 py-2" aria-label="Modifier">
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                        <button type="button" onClick={() => handleDelete(supplier)} className="btn-secondary px-3 py-2 text-red-700" aria-label="Supprimer">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <span />
+                    )}
+                  </article>
+                ))}
+                {suppliers.length === 0 && <p className="min-w-[1180px] p-5 text-sm text-slate-600">Aucun fournisseur trouve.</p>}
+              </div>
+            )}
+          </div>
         </div>
       </section>
     </div>

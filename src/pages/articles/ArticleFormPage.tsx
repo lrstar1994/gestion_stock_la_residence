@@ -34,6 +34,7 @@ export function ArticleFormPage() {
       packaging: '',
       default_supplier: '',
       min_stock: 0,
+      sellable_without_transformation: false,
       status: 'active',
       location_ids: [],
     },
@@ -75,6 +76,7 @@ export function ArticleFormPage() {
           packaging: article.packaging ?? '',
           default_supplier: article.default_supplier ?? '',
           min_stock: Number(article.min_stock ?? 0),
+          sellable_without_transformation: Boolean(article.sellable_without_transformation),
           status: article.status,
           location_ids: article.article_locations?.map((item) => item.locations.id) ?? [],
         })
@@ -168,6 +170,10 @@ export function ArticleFormPage() {
           <Field label="Stock minimum" error={form.formState.errors.min_stock?.message}>
             <input {...form.register('min_stock', { valueAsNumber: true })} type="number" step="0.01" min="0" className="input mt-2" />
           </Field>
+          <label className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-700">
+            <input type="checkbox" {...form.register('sellable_without_transformation')} className="h-4 w-4 rounded border-slate-300 text-[#1E3A8A]" />
+            A vendre sans transformation
+          </label>
           <Field label="Statut">
             <select {...form.register('status')} className="input mt-2">
               <option value="active">Actif</option>

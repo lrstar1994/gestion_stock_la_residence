@@ -13,6 +13,9 @@ const statusClasses: Record<ArticleStatus, string> = {
   archived: 'bg-red-50 text-red-700 ring-red-200',
 }
 
+const articleGridClass =
+  'grid min-w-[1240px] grid-cols-[1.3fr_1fr_110px_1.1fr_110px_130px_130px_140px] items-center gap-4'
+
 export function ArticlesList() {
   const { profile } = useAuth()
   const canEdit = canManageArticles(profile?.role)
@@ -99,49 +102,56 @@ export function ArticlesList() {
       </section>
 
       <section className="surface overflow-hidden">
-        <div className="hidden grid-cols-[1.2fr_1fr_110px_1fr_110px_130px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
-          <span>Nom</span>
-          <span>Categorie</span>
-          <span>Unite</span>
-          <span>Fournisseur</span>
-          <span>Stock min.</span>
-          <span>Statut</span>
-        </div>
-
-        {loading ? (
-          <p className="p-6 text-sm text-slate-600">Chargement...</p>
-        ) : articles.length === 0 ? (
-          <p className="p-6 text-sm text-slate-600">Aucun article trouve.</p>
-        ) : (
-          <div className="divide-y divide-slate-200">
-            {articles.map((article) => (
-              <article key={article.id} className="grid gap-4 px-5 py-4 transition hover:bg-slate-50 xl:grid-cols-[1.2fr_1fr_110px_1fr_110px_130px_140px] xl:items-center">
-                <div>
-                  <p className="font-semibold text-slate-950">{article.name}</p>
-                  <p className="mt-1 text-sm text-slate-500">{article.packaging || 'Conditionnement non renseigne'}</p>
-                </div>
-                <p className="text-sm text-slate-700">{article.families?.name ?? '-'}</p>
-                <p className="text-sm font-semibold text-[#1E3A8A]">{article.units?.abbreviation ?? '-'}</p>
-                <p className="text-sm text-slate-700">{article.default_supplier || '-'}</p>
-                <p className="text-sm text-slate-700">{article.min_stock ?? 0}</p>
-                <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ring-1 ${statusClasses[article.status]}`}>
-                  {articleStatusLabels[article.status]}
-                </span>
-                <div className="flex gap-2">
-                  <Link to={`/articles/${article.id}`} className="btn-secondary px-3 py-2" aria-label="Voir">
-                    <Eye className="h-4 w-4" />
-                  </Link>
-                  {canEdit && (
-                    <Link to={`/articles/${article.id}/edit`} className="btn-secondary px-3 py-2" aria-label="Modifier">
-                      <Pencil className="h-4 w-4" />
-                    </Link>
-                  )}
-                  {article.status === 'archived' && <Archive className="mt-2 h-4 w-4 text-red-500" />}
-                </div>
-              </article>
-            ))}
+        <div className="overflow-x-auto">
+          <div className={`${articleGridClass} border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500`}>
+            <span>Nom</span>
+            <span>Categorie</span>
+            <span>Unite</span>
+            <span>Fournisseur</span>
+            <span>Stock min.</span>
+            <span>Statut</span>
+            <span>Vente directe</span>
+            <span>Actions</span>
           </div>
-        )}
+
+          {loading ? (
+            <p className="min-w-[1240px] p-6 text-sm text-slate-600">Chargement...</p>
+          ) : articles.length === 0 ? (
+            <p className="min-w-[1240px] p-6 text-sm text-slate-600">Aucun article trouve.</p>
+          ) : (
+            <div className="divide-y divide-slate-200">
+              {articles.map((article) => (
+                <article key={article.id} className={`${articleGridClass} px-5 py-4 transition hover:bg-slate-50`}>
+                  <div>
+                    <p className="font-semibold text-slate-950">{article.name}</p>
+                    <p className="mt-1 text-sm text-slate-500">{article.packaging || 'Conditionnement non renseigne'}</p>
+                  </div>
+                  <p className="text-sm text-slate-700">{article.families?.name ?? '-'}</p>
+                  <p className="text-sm font-semibold text-[#1E3A8A]">{article.units?.abbreviation ?? '-'}</p>
+                  <p className="truncate text-sm text-slate-700">{article.default_supplier || '-'}</p>
+                  <p className="text-sm text-slate-700">{article.min_stock ?? 0}</p>
+                  <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ring-1 ${statusClasses[article.status]}`}>
+                    {articleStatusLabels[article.status]}
+                  </span>
+                  <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ring-1 ${article.sellable_without_transformation ? 'bg-amber-50 text-amber-800 ring-amber-200' : 'bg-slate-100 text-slate-600 ring-slate-200'}`}>
+                    {article.sellable_without_transformation ? 'Oui' : 'Non'}
+                  </span>
+                  <div className="flex gap-2">
+                    <Link to={`/articles/${article.id}`} className="btn-secondary px-3 py-2" aria-label="Voir">
+                      <Eye className="h-4 w-4" />
+                    </Link>
+                    {canEdit && (
+                      <Link to={`/articles/${article.id}/edit`} className="btn-secondary px-3 py-2" aria-label="Modifier">
+                        <Pencil className="h-4 w-4" />
+                      </Link>
+                    )}
+                    {article.status === 'archived' && <Archive className="mt-2 h-4 w-4 text-red-500" />}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
