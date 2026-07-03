@@ -48,10 +48,10 @@ export function FamiliesPage() {
     try {
       if (editingFamily) {
         await updateFamily(editingFamily.id, values)
-        toast.success('Famille mise a jour avec succes')
+        toast.success('Categorie mise a jour avec succes')
       } else {
         await createFamily(values, profile?.id)
-        toast.success('Famille creee avec succes')
+        toast.success('Categorie creee avec succes')
       }
       resetForm()
       await loadFamilies()
@@ -61,13 +61,13 @@ export function FamiliesPage() {
   }
 
   const handleDelete = async (family: Family) => {
-    if (!window.confirm('Voulez-vous vraiment supprimer cette famille ?')) {
+    if (!window.confirm('Voulez-vous vraiment supprimer cette categorie ?')) {
       return
     }
 
     try {
       await deleteFamily(family.id)
-      toast.success('Famille supprimee avec succes')
+      toast.success('Categorie supprimee avec succes')
       await loadFamilies()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Une erreur est survenue. Veuillez reessayer.')
@@ -78,12 +78,12 @@ export function FamiliesPage() {
     <div className="space-y-6">
       <header>
         <p className="eyebrow">Direction</p>
-        <h1 className="page-title mt-2">Familles</h1>
+        <h1 className="page-title mt-2">Categories</h1>
       </header>
 
       <section className="grid gap-4 lg:grid-cols-[380px_1fr]">
         <form onSubmit={form.handleSubmit(onSubmit)} className="surface h-fit p-5">
-          <h2 className="text-lg font-bold text-slate-900">{editingFamily ? 'Modifier une famille' : 'Creer une famille'}</h2>
+          <h2 className="text-lg font-bold text-slate-900">{editingFamily ? 'Modifier une categorie' : 'Creer une categorie'}</h2>
           <label className="mt-5 block">
             <span className="field-label">Nom</span>
             <input {...form.register('name')} className="input mt-2" />
@@ -110,7 +110,7 @@ export function FamiliesPage() {
           <div className="border-b border-slate-200 p-4">
             <label className="relative block">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} className="input pl-9" placeholder="Rechercher une famille" />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} className="input pl-9" placeholder="Rechercher une categorie" />
             </label>
           </div>
 
@@ -136,7 +136,7 @@ export function FamiliesPage() {
                   </div>
                 </article>
               ))}
-              {families.length === 0 && <p className="p-5 text-sm text-slate-600">Aucune famille trouvee.</p>}
+              {families.length === 0 && <p className="p-5 text-sm text-slate-600">Aucune categorie trouvee.</p>}
             </div>
           )}
         </div>

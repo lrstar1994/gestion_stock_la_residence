@@ -30,6 +30,17 @@ export type Family = {
   articles_count?: number
 }
 
+export type SubCategory = {
+  id: string
+  family_id: string
+  name: string
+  created_at: string
+  updated_at: string
+  created_by: string | null
+  families?: Pick<Family, 'id' | 'name'>
+  articles_count?: number
+}
+
 export type Unit = {
   id: string
   name: string
@@ -74,6 +85,11 @@ export const familySchema = z.object({
   description: z.string().optional(),
 })
 
+export const subCategorySchema = z.object({
+  family_id: z.string().min(1, 'La categorie est obligatoire'),
+  name: z.string().min(1, 'Le nom est obligatoire'),
+})
+
 export const unitSchema = z.object({
   name: z.string().min(1, 'Le nom est obligatoire'),
   abbreviation: z.string().min(1, "L'abreviation est obligatoire"),
@@ -87,7 +103,7 @@ export const locationSchema = z.object({
 
 export const articleSchema = z.object({
   name: z.string().min(1, 'Le nom est obligatoire'),
-  family_id: z.string().min(1, 'La famille est obligatoire'),
+  family_id: z.string().min(1, 'La categorie est obligatoire'),
   sub_family: z.string().optional(),
   unit_id: z.string().min(1, "L'unite est obligatoire"),
   packaging: z.string().optional(),
@@ -98,6 +114,7 @@ export const articleSchema = z.object({
 })
 
 export type FamilyFormValues = z.infer<typeof familySchema>
+export type SubCategoryFormValues = z.infer<typeof subCategorySchema>
 export type UnitFormValues = z.infer<typeof unitSchema>
 export type LocationFormValues = z.infer<typeof locationSchema>
 export type ArticleFormValues = z.infer<typeof articleSchema>

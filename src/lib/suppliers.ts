@@ -7,6 +7,8 @@ export type Supplier = {
   contact: string | null
   phone: string | null
   email: string | null
+  nif: string | null
+  stat: string | null
   address: string | null
   notes: string | null
   created_at: string
@@ -20,6 +22,8 @@ export const supplierSchema = z.object({
   contact: z.string().optional(),
   phone: z.string().optional(),
   email: z.string().email('Adresse email invalide').optional().or(z.literal('')),
+  nif: z.string().optional(),
+  stat: z.string().optional(),
   address: z.string().optional(),
   notes: z.string().optional(),
 })

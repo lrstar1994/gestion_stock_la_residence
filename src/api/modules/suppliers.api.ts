@@ -10,7 +10,8 @@ export async function listSuppliers(search = '') {
   let query = supabase.schema('stock').from('suppliers').select('*').order('name', { ascending: true })
 
   if (search.trim()) {
-    query = query.ilike('name', `%${search.trim()}%`)
+    const term = search.trim()
+    query = query.or(`name.ilike.%${term}%,nif.ilike.%${term}%,stat.ilike.%${term}%`)
   }
 
   const { data, error } = await query
@@ -28,6 +29,8 @@ export async function createSupplier(values: SupplierFormValues, profileId?: str
     contact: cleanNullable(values.contact),
     phone: cleanNullable(values.phone),
     email: cleanNullable(values.email),
+    nif: cleanNullable(values.nif),
+    stat: cleanNullable(values.stat),
     address: cleanNullable(values.address),
     notes: cleanNullable(values.notes),
     created_by: profileId,
@@ -47,6 +50,8 @@ export async function updateSupplier(id: string, values: SupplierFormValues, pro
       contact: cleanNullable(values.contact),
       phone: cleanNullable(values.phone),
       email: cleanNullable(values.email),
+      nif: cleanNullable(values.nif),
+      stat: cleanNullable(values.stat),
       address: cleanNullable(values.address),
       notes: cleanNullable(values.notes),
       updated_by: profileId,

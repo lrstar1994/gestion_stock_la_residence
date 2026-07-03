@@ -4,11 +4,11 @@ import { useEffect, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { createArticle, getArticle, listFamilies, listLocations, listUnits, updateArticle } from '../../api/modules/catalog.api'
+import { createArticle, getArticle, listFamilies, listLocations, listSubCategories, listUnits, updateArticle } from '../../api/modules/catalog.api'
 import { listSuppliers } from '../../api/modules/suppliers.api'
 import { useAuth } from '../../hooks/useAuth'
 import { articleSchema } from '../../lib/catalog'
-import type { ArticleFormValues, Family, Location, Unit } from '../../lib/catalog'
+import type { ArticleFormValues, Family, Location, SubCategory, Unit } from '../../lib/catalog'
 import type { Supplier } from '../../lib/suppliers'
 import type { ReactNode } from 'react'
 
@@ -18,6 +18,7 @@ export function ArticleFormPage() {
   const navigate = useNavigate()
   const { profile } = useAuth()
   const [families, setFamilies] = useState<Family[]>([])
+  const [subCategories, setSubCategories] = useState<SubCategory[]>([])
   const [units, setUnits] = useState<Unit[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
@@ -38,11 +39,15 @@ export function ArticleFormPage() {
     },
   })
   const selectedSupplier = useWatch({ control: form.control, name: 'default_supplier' })
+  const selectedFamilyId = useWatch({ control: form.control, name: 'family_id' })
+  const selectedSubCategory = useWatch({ control: form.control, name: 'sub_family' })
+  const filteredSubCategories = subCategories.filter((subCategory) => subCategory.family_id === selectedFamilyId)
 
   useEffect(() => {
-    Promise.all([listFamilies(), listUnits(), listLocations(), listSuppliers()])
-      .then(([loadedFamilies, loadedUnits, loadedLocations, loadedSuppliers]) => {
+    Promise.all([listFamilies(), listSubCategories(), listUnits(), listLocations(), listSuppliers()])
+      .then(([loadedFamilies, loadedSubCategories, loadedUnits, loadedLocations, loadedSuppliers]) => {
         setFamilies(loadedFamilies)
+        setSubCategories(loadedSubCategories)
         setUnits(loadedUnits)
         setLocations(loadedLocations)
         setSuppliers(loadedSuppliers)
@@ -110,16 +115,31 @@ export function ArticleFormPage() {
           <Field label="Nom normalise" error={form.formState.errors.name?.message}>
             <input {...form.register('name')} className="input mt-2" />
           </Field>
-          <Field label="Famille" error={form.formState.errors.family_id?.message}>
-            <select {...form.register('family_id')} className="input mt-2">
+          <Field label="Categorie" error={form.formState.errors.family_id?.message}>
+            <select
+              {...form.register('family_id')}
+              onChange={(event) => {
+                form.setValue('family_id', event.target.value)
+                form.setValue('sub_family', '')
+              }}
+              className="input mt-2"
+            >
               <option value="">Selectionner</option>
               {families.map((family) => (
                 <option key={family.id} value={family.id}>{family.name}</option>
               ))}
             </select>
           </Field>
-          <Field label="Sous-famille">
-            <input {...form.register('sub_family')} className="input mt-2" />
+          <Field label="Sous-categorie">
+            <select {...form.register('sub_family')} disabled={!selectedFamilyId} className="input mt-2 disabled:cursor-not-allowed disabled:bg-slate-100">
+              <option value="">{selectedFamilyId ? 'Selectionner' : 'Selectionnez une categorie'}</option>
+              {selectedSubCategory && !filteredSubCategories.some((subCategory) => subCategory.name === selectedSubCategory) && (
+                <option value={selectedSubCategory}>{selectedSubCategory}</option>
+              )}
+              {filteredSubCategories.map((subCategory) => (
+                <option key={subCategory.id} value={subCategory.name}>{subCategory.name}</option>
+              ))}
+            </select>
           </Field>
           <Field label="Unite de gestion" error={form.formState.errors.unit_id?.message}>
             <select {...form.register('unit_id')} className="input mt-2">

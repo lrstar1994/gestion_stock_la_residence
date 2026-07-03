@@ -90,10 +90,10 @@ export function ArticleDetail() {
       </header>
 
       <section className="grid gap-4 lg:grid-cols-3">
-        <Info label="Famille" value={article.families?.name ?? '-'} />
+        <Info label="Categorie" value={article.families?.name ?? '-'} />
         <Info label="Unite" value={article.units ? `${article.units.name} (${article.units.abbreviation})` : '-'} />
         <Info label="Statut" value={articleStatusLabels[article.status]} />
-        <Info label="Sous-famille" value={article.sub_family || '-'} />
+        <Info label="Sous-categorie" value={article.sub_family || '-'} />
         <Info label="Conditionnement" value={article.packaging || '-'} />
         <Info label="Fournisseur habituel" value={article.default_supplier || '-'} />
         <Info label="Stock minimum" value={String(article.min_stock ?? 0)} />

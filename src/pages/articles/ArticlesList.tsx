@@ -73,11 +73,11 @@ export function ArticlesList() {
               value={search}
               onChange={(event) => resetPage(() => setSearch(event.target.value))}
               className="input pl-9"
-              placeholder="Rechercher par nom ou famille"
+              placeholder="Rechercher par nom ou categorie"
             />
           </label>
           <select value={familyId} onChange={(event) => resetPage(() => setFamilyId(event.target.value))} className="input">
-            <option value="all">Toutes les familles</option>
+            <option value="all">Toutes les categories</option>
             {families.map((family) => (
               <option key={family.id} value={family.id}>
                 {family.name}
@@ -101,7 +101,7 @@ export function ArticlesList() {
       <section className="surface overflow-hidden">
         <div className="hidden grid-cols-[1.2fr_1fr_110px_1fr_110px_130px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
           <span>Nom</span>
-          <span>Famille</span>
+          <span>Categorie</span>
           <span>Unite</span>
           <span>Fournisseur</span>
           <span>Stock min.</span>

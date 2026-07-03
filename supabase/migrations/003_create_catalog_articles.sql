@@ -157,15 +157,164 @@ create policy "Catalog managers can manage article locations"
   using (stock.can_current_user_manage_catalog())
   with check (stock.can_current_user_manage_catalog());
 
-insert into stock.families (name, description) values
-  ('Cuisine', 'Matieres premieres pour la cuisine'),
-  ('Patisserie', 'Produits pour la patisserie'),
-  ('Boissons', 'Boissons et sodas'),
-  ('Entretien', 'Produits d''entretien et nettoyage'),
-  ('Chambres', 'Produits d''accueil pour les chambres'),
-  ('Maintenance', 'Materiel et fournitures de maintenance'),
-  ('Administration', 'Fournitures administratives et de bureau')
-on conflict (name) do nothing;
+-- Catégories
+INSERT INTO stock.families (name)
+VALUES
+  ('épicerie'),
+  ('produits frais'),
+  ('boissons'),
+  ('fruits'),
+  ('légumes'),
+  ('viandes'),
+  ('FDM'),
+  ('charcuterie'),
+  ('produits laitiers'),
+  ('café'),
+  ('emballages'),
+  ('energie'),
+  ('matériels'),
+  ('peinture'),
+  ('produits d''entretien'),
+  ('produits nettoyage'),
+  ('produits phytosanitaire'),
+  ('quincaillerie'),
+  ('thé'),
+  ('vin'),
+  ('déco')
+ON CONFLICT (name) DO NOTHING;
+
+
+-- Sous-catégories
+WITH data(category, sub_category) AS (
+  VALUES
+    ('épicerie', 'épices'),
+    ('épicerie', 'conserves'),
+    ('épicerie', 'patisserie'),
+    ('épicerie', 'aromes'),
+    ('épicerie', 'condiments'),
+    ('épicerie', 'huile'),
+    ('épicerie', 'farine'),
+    ('épicerie', 'sauces'),
+    ('épicerie', 'chocolat'),
+    ('épicerie', 'café'),
+    ('épicerie', 'divers'),
+    ('épicerie', 'féculents'),
+    ('épicerie', 'colorants'),
+    ('épicerie', 'riz'),
+    ('épicerie', 'sucre'),
+    ('épicerie', 'thé'),
+
+    ('produits frais', 'œufs'),
+
+    ('boissons', 'alcools'),
+    ('boissons', 'sirops'),
+    ('boissons', 'Bières'),
+    ('boissons', 'eau minérale'),
+    ('boissons', 'gazeuses GM'),
+    ('boissons', 'gazeuses PM'),
+    ('boissons', 'jus'),
+
+    ('fruits', 'fruits secs'),
+    ('fruits', 'fruits'),
+
+    ('légumes', 'brèdes'),
+    ('légumes', 'aromates'),
+    ('légumes', 'condiments'),
+    ('légumes', 'féculents'),
+
+    ('viandes', 'volailles'),
+    ('viandes', 'zébu'),
+    ('viandes', 'porc'),
+    ('viandes', 'mouton'),
+
+    ('FDM', 'filet de poisson'),
+    ('FDM', 'poisson entier'),
+    ('FDM', 'poisson en tranches'),
+    ('FDM', 'crevettes'),
+    ('FDM', 'calmars/encornets'),
+    ('FDM', 'autres'),
+    ('FDM', 'poisson entier PM'),
+
+    ('charcuterie', 'porc'),
+    ('charcuterie', 'bœuf'),
+    ('charcuterie', 'volailles'),
+
+    ('produits laitiers', 'beurre/margarine'),
+    ('produits laitiers', 'lait'),
+    ('produits laitiers', 'fromages'),
+    ('produits laitiers', 'yaourts'),
+    ('produits laitiers', 'autres'),
+    ('produits laitiers', 'crème'),
+
+    ('café', 'expresso'),
+
+    ('emballages', 'boites'),
+    ('emballages', 'couverts'),
+    ('emballages', 'déco'),
+    ('emballages', 'divers'),
+    ('emballages', 'plaques'),
+    ('emballages', 'sachets'),
+    ('emballages', 'sacs poubelles'),
+
+    ('energie', 'alcool à bruler'),
+    ('energie', 'charbon'),
+    ('energie', 'gaz'),
+
+    ('matériels', 'cuisine'),
+    ('matériels', 'divers'),
+    ('matériels', 'internet'),
+    ('matériels', 'jardin'),
+    ('matériels', 'ménage'),
+    ('matériels', 'travaux'),
+    ('matériels', 'peinture'),
+    ('matériels', 'sanitaires'),
+
+    ('peinture', 'spray'),
+    ('peinture', 'à l''eau'),
+    ('peinture', 'à l''huile'),
+    ('peinture', 'antirouille'),
+    ('peinture', 'vernis'),
+    ('peinture', 'teintes'),
+    ('peinture', 'enduits'),
+
+    ('produits d''entretien', 'peinture'),
+    ('produits d''entretien', 'piscine'),
+
+    ('produits nettoyage', 'accueil'),
+    ('produits nettoyage', 'lingerie'),
+    ('produits nettoyage', 'locaux'),
+    ('produits nettoyage', 'piscine'),
+    ('produits nettoyage', 'vaisselle'),
+    ('produits nettoyage', 'voiture'),
+
+    ('produits phytosanitaire', 'anti-mousiques'),
+    ('produits phytosanitaire', 'anti-rats'),
+    ('produits phytosanitaire', 'anti-mouches'),
+
+    ('quincaillerie', 'électricité'),
+    ('quincaillerie', 'étanchéité'),
+    ('quincaillerie', 'fers'),
+    ('quincaillerie', 'menuiserie'),
+    ('quincaillerie', 'plomberie'),
+    ('quincaillerie', 'visserie'),
+    ('quincaillerie', 'divers'),
+    ('quincaillerie', 'constructions'),
+
+    ('thé', 'thé'),
+
+    ('vin', 'blancs'),
+    ('vin', 'blancs au verre'),
+    ('vin', 'rouges'),
+    ('vin', 'rouges au verre'),
+
+    ('déco', 'alimentaire'),
+    ('déco', 'non alimentaire')
+)
+INSERT INTO stock.sub_categories (family_id, name)
+SELECT f.id, d.sub_category
+FROM data d
+JOIN stock.families f ON f.name = d.category
+ON CONFLICT (family_id, name) DO NOTHING;
 
 insert into stock.units (name, abbreviation) values
   ('Kilogramme', 'kg'),

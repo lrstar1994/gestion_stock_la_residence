@@ -12,6 +12,7 @@ import { FinanceDashboard } from './pages/dashboard/FinanceDashboard'
 import { Profile } from './pages/profile/Profile'
 import { UsersList } from './pages/admin/users/UsersList'
 import { FamiliesPage } from './pages/admin/families/FamiliesPage'
+import { SubCategoriesPage } from './pages/admin/sub-categories/SubCategoriesPage'
 import { UnitsPage } from './pages/admin/units/UnitsPage'
 import { LocationsPage } from './pages/admin/locations/LocationsPage'
 import { SuppliersPage } from './pages/admin/suppliers/SuppliersPage'
@@ -181,6 +182,7 @@ function App() {
           <Route path="/admin/users" element={<UsersList />} />
           <Route path="/audit/inter-modules" element={<InterModuleAuditPage />} />
           <Route path="/admin/families" element={<FamiliesPage />} />
+          <Route path="/admin/sub-categories" element={<SubCategoriesPage />} />
           <Route path="/admin/units" element={<UnitsPage />} />
           <Route path="/admin/locations" element={<LocationsPage />} />
         </Route>

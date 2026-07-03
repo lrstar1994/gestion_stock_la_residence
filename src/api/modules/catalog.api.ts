@@ -7,6 +7,8 @@ import type {
   FamilyFormValues,
   Location,
   LocationFormValues,
+  SubCategory,
+  SubCategoryFormValues,
   Unit,
   UnitFormValues,
 } from '../../lib/catalog'
@@ -83,11 +85,101 @@ export async function deleteFamily(id: string) {
   }
 
   if ((count ?? 0) > 0) {
-    throw new Error('Cette famille est utilisee par des articles et ne peut pas etre supprimee')
+    throw new Error('Cette categorie est utilisee par des articles et ne peut pas etre supprimee')
   }
 
   const { error } = await supabase.schema('stock').from('families').delete().eq('id', id)
 
+  if (error) {
+    throw error
+  }
+}
+
+export async function listSubCategories(familyId?: string, search = '') {
+  let query = supabase.schema('stock')
+    .from('sub_categories')
+    .select('*, families(id, name)')
+    .order('name', { ascending: true })
+
+  if (familyId && familyId !== 'all') {
+    query = query.eq('family_id', familyId)
+  }
+  if (search.trim()) {
+    query = query.ilike('name', `%${search.trim()}%`)
+  }
+
+  const { data, error } = await query
+  if (error) {
+    throw error
+  }
+
+  const rows = (data ?? []) as SubCategory[]
+  const counts = await Promise.all(rows.map(async (subCategory) => {
+    const { count } = await supabase.schema('stock')
+      .from('articles')
+      .select('id', { count: 'exact', head: true })
+      .eq('family_id', subCategory.family_id)
+      .eq('sub_family', subCategory.name)
+    return [subCategory.id, count ?? 0] as const
+  }))
+  const countById = new Map(counts)
+  return rows.map((subCategory) => ({
+    ...subCategory,
+    articles_count: countById.get(subCategory.id) ?? 0,
+  }))
+}
+
+export async function createSubCategory(values: SubCategoryFormValues, profileId?: string) {
+  const { error } = await supabase.schema('stock').from('sub_categories').insert({
+    family_id: values.family_id,
+    name: values.name.trim(),
+    created_by: profileId,
+  })
+
+  if (error) {
+    throw error
+  }
+}
+
+export async function updateSubCategory(id: string, values: SubCategoryFormValues) {
+  const { error } = await supabase.schema('stock')
+    .from('sub_categories')
+    .update({
+      family_id: values.family_id,
+      name: values.name.trim(),
+    })
+    .eq('id', id)
+
+  if (error) {
+    throw error
+  }
+}
+
+export async function deleteSubCategory(id: string) {
+  const { data: subCategory, error: subCategoryError } = await supabase.schema('stock')
+    .from('sub_categories')
+    .select('family_id, name')
+    .eq('id', id)
+    .single()
+
+  if (subCategoryError) {
+    throw subCategoryError
+  }
+
+  const { count, error: countError } = await supabase.schema('stock')
+    .from('articles')
+    .select('id', { count: 'exact', head: true })
+    .eq('family_id', subCategory.family_id)
+    .eq('sub_family', subCategory.name)
+
+  if (countError) {
+    throw countError
+  }
+  if ((count ?? 0) > 0) {
+    throw new Error('Cette sous-categorie est utilisee par des articles et ne peut pas etre supprimee')
+  }
+
+  const { error } = await supabase.schema('stock').from('sub_categories').delete().eq('id', id)
   if (error) {
     throw error
   }

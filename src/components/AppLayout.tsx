@@ -68,7 +68,10 @@ export function AppLayout() {
             {profile?.role === 'direction' && (
               <>
                 <NavLink to="/admin/families" className={linkClass}>
-                  Familles
+                  Categories
+                </NavLink>
+                <NavLink to="/admin/sub-categories" className={linkClass}>
+                  Sous-categories
                 </NavLink>
                 <NavLink to="/admin/units" className={linkClass}>
                   Unites

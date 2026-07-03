@@ -24,6 +24,8 @@ export function SuppliersPage() {
       contact: '',
       phone: '',
       email: '',
+      nif: '',
+      stat: '',
       address: '',
       notes: '',
     },
@@ -51,6 +53,8 @@ export function SuppliersPage() {
       contact: supplier.contact ?? '',
       phone: supplier.phone ?? '',
       email: supplier.email ?? '',
+      nif: supplier.nif ?? '',
+      stat: supplier.stat ?? '',
       address: supplier.address ?? '',
       notes: supplier.notes ?? '',
     })
@@ -63,6 +67,8 @@ export function SuppliersPage() {
       contact: '',
       phone: '',
       email: '',
+      nif: '',
+      stat: '',
       address: '',
       notes: '',
     })
@@ -138,6 +144,14 @@ export function SuppliersPage() {
                   <input {...form.register('email')} type="email" className="input mt-2" />
                 </Field>
               </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="NIF">
+                  <input {...form.register('nif')} className="input mt-2" />
+                </Field>
+                <Field label="STAT">
+                  <input {...form.register('stat')} className="input mt-2" />
+                </Field>
+              </div>
               <Field label="Adresse">
                 <textarea {...form.register('address')} className="input mt-2 min-h-20 resize-none" />
               </Field>
@@ -168,7 +182,7 @@ export function SuppliersPage() {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 className="input pl-9"
-                placeholder="Rechercher un fournisseur"
+                placeholder="Rechercher nom, NIF ou STAT"
               />
             </label>
           </div>
@@ -178,12 +192,14 @@ export function SuppliersPage() {
           ) : (
             <div className="divide-y divide-slate-200">
               {suppliers.map((supplier) => (
-                <article key={supplier.id} className="grid gap-3 p-4 xl:grid-cols-[1fr_150px_130px_190px_1fr_110px] xl:items-center">
+                <article key={supplier.id} className="grid gap-3 p-4 xl:grid-cols-[1fr_140px_120px_120px_130px_180px_1fr_110px] xl:items-center">
                   <div>
                     <p className="font-semibold text-slate-950">{supplier.name}</p>
                     {supplier.notes && <p className="mt-1 line-clamp-2 text-sm text-slate-500">{supplier.notes}</p>}
                   </div>
                   <p className="text-sm text-slate-700">{supplier.contact || '-'}</p>
+                  <p className="text-sm text-slate-700">{supplier.nif || '-'}</p>
+                  <p className="text-sm text-slate-700">{supplier.stat || '-'}</p>
                   <p className="text-sm text-slate-700">{supplier.phone || '-'}</p>
                   <p className="truncate text-sm text-slate-700">{supplier.email || '-'}</p>
                   <p className="line-clamp-2 text-sm text-slate-700">{supplier.address || '-'}</p>
