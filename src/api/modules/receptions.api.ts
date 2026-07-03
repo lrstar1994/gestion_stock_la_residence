@@ -51,7 +51,7 @@ export async function listReceptions(filters: ReceptionFilters = {}) {
 export async function getReception(id: string) {
   const { data, error } = await supabase.schema('stock')
     .from('receptions')
-    .select('*, suppliers(*), locations(id, name), purchase_orders(id, reference, status), receiver:profiles!receptions_created_by_fkey(id, full_name, role), validator:profiles!receptions_validated_by_fkey(id, full_name), reception_items(*, articles(id, name, families(id, name)), units(id, name, abbreviation), reception_anomalies(*)), reception_documents(*), reception_history(*, actor:profiles!reception_history_created_by_fkey(id, full_name))')
+    .select('*, suppliers(*), locations(id, name), purchase_orders(id, reference, status, total_amount, purchase_order_items(*, articles(id, name, families(id, name)), units(id, name, abbreviation))), cash_purchases(id, reference, status, amount_requested, amount_validated, amount_given, total_purchased, change_expected, change_returned, difference, cash_purchase_items(*, articles(id, name, units(id, name, abbreviation)), units(id, name, abbreviation))), receiver:profiles!receptions_created_by_fkey(id, full_name, role), validator:profiles!receptions_validated_by_fkey(id, full_name), reception_items(*, articles(id, name, families(id, name)), units(id, name, abbreviation), reception_anomalies(*)), reception_documents(*), reception_history(*, actor:profiles!reception_history_created_by_fkey(id, full_name))')
     .eq('id', id)
     .single()
   if (error) throw error

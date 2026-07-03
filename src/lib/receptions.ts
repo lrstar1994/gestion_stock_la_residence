@@ -3,6 +3,7 @@ import type { Article, Location, Unit } from './catalog'
 import type { PurchaseOrder } from './purchaseOrders'
 import type { Supplier } from './suppliers'
 import type { Profile, UserRole } from './validation'
+import type { CashPurchase } from './cashPurchases'
 
 export const receptionStatuses = ['brouillon', 'en_attente', 'validee', 'validee_avec_anomalies', 'entree_stock', 'refusee'] as const
 export const qualityStatuses = ['conforme', 'non_conforme', 'a_verifier'] as const
@@ -115,7 +116,8 @@ export type Reception = {
   updated_by: string | null
   suppliers?: Supplier
   locations?: Pick<Location, 'id' | 'name'>
-  purchase_orders?: Pick<PurchaseOrder, 'id' | 'reference' | 'status'>
+  purchase_orders?: Pick<PurchaseOrder, 'id' | 'reference' | 'status' | 'total_amount' | 'purchase_order_items'>
+  cash_purchases?: Pick<CashPurchase, 'id' | 'reference' | 'status' | 'amount_requested' | 'amount_validated' | 'amount_given' | 'total_purchased' | 'change_expected' | 'change_returned' | 'difference' | 'cash_purchase_items'>
   receiver?: Pick<Profile, 'id' | 'full_name' | 'role'>
   validator?: Pick<Profile, 'id' | 'full_name'>
   reception_items?: ReceptionItem[]
