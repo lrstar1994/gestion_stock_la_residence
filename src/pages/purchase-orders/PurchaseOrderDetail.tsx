@@ -1,8 +1,8 @@
-import { CheckCircle, Download, Edit, FileUp, Send, XCircle } from 'lucide-react'
+import { CheckCircle, Download, Edit, Send, XCircle } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { attachGeneratedPurchaseOrderPdf, cancelPurchaseOrder, closePurchaseOrder, getPurchaseOrder, sendPurchaseOrder, uploadPurchaseOrderDocument, validateOrderItemDifference, validatePurchaseOrder } from '../../api/modules/purchaseOrders.api'
+import { attachGeneratedPurchaseOrderPdf, cancelPurchaseOrder, closePurchaseOrder, getPurchaseOrder, sendPurchaseOrder, validateOrderItemDifference, validatePurchaseOrder } from '../../api/modules/purchaseOrders.api'
 import { useAuth } from '../../hooks/useAuth'
 import { createPurchaseOrderPdfFile, exportPurchaseOrderToPdf } from '../../lib/purchaseOrderExports'
 import { canEditPurchaseOrder, canReceivePurchaseOrders, canSendPurchaseOrders, canValidatePurchaseOrders, purchaseOrderStatusLabels } from '../../lib/purchaseOrders'
@@ -15,9 +15,6 @@ export function PurchaseOrderDetail() {
   const { profile } = useAuth()
   const [order, setOrder] = useState<PurchaseOrder | null>(null)
   const [items, setItems] = useState<PurchaseOrderItem[]>([])
-  const [documentFile, setDocumentFile] = useState<File | null>(null)
-  const [documentDescription, setDocumentDescription] = useState('')
-  const [uploadingDocument, setUploadingDocument] = useState(false)
   const canValidate = canValidatePurchaseOrders(profile?.role)
   const canSend = canSendPurchaseOrders(profile?.role)
   const canReceive = canReceivePurchaseOrders(profile?.role)
@@ -78,25 +75,6 @@ export function PurchaseOrderDetail() {
     }
   }
 
-  const addDocument = async () => {
-    if (!documentFile) {
-      toast.error('Selectionnez un document')
-      return
-    }
-    try {
-      setUploadingDocument(true)
-      await uploadPurchaseOrderDocument(order.id, documentFile, documentDescription, profile?.id)
-      toast.success('Document ajoute')
-      setDocumentFile(null)
-      setDocumentDescription('')
-      await load()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Upload impossible')
-    } finally {
-      setUploadingDocument(false)
-    }
-  }
-
   const validateItemDifference = async (itemId: string | undefined) => {
     if (!itemId) return
     await validateOrderItemDifference(itemId, profile?.id)
@@ -136,29 +114,36 @@ export function PurchaseOrderDetail() {
       </section>
 
       <section className="surface overflow-hidden">
-        <div className="hidden grid-cols-[1fr_100px_100px_110px_120px_1.2fr_120px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
-          <span>Article</span><span>Commande</span><span>Recu</span><span>Restant</span><span>Prix</span><span>Ecart</span><span>Total</span>
+        <div className="hidden grid-cols-[1fr_140px_140px_140px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
+          <span>Article</span><span>Commande</span><span>Prix</span><span>Total</span>
         </div>
         <div className="divide-y divide-slate-200">
           {items.map((item) => (
-            <div key={item.id} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_100px_100px_110px_120px_1.2fr_120px] xl:items-center">
+            <div key={item.id} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_140px_140px_140px] xl:items-center">
               <span><span className="block font-semibold">{item.articles?.name}</span><span className="text-xs text-slate-500">{item.articles?.families?.name || ''}</span></span>
               <span>{Number(item.quantity_ordered).toLocaleString('fr-FR')} {item.units?.abbreviation}</span>
-              <span>{Number(item.quantity_received ?? 0).toLocaleString('fr-FR')} {item.units?.abbreviation}</span>
-              <span>{Math.max(0, Number(item.quantity_ordered ?? 0) - Number(item.quantity_received ?? 0)).toLocaleString('fr-FR')} {item.units?.abbreviation}</span>
               <span>{Number(item.unit_price ?? 0).toLocaleString('fr-FR')} Ar</span>
-              <div className="space-y-2">
-                <p className="text-sm font-semibold">{item.difference_type ? orderDifferenceTypeLabels[item.difference_type] : 'Aucun'}</p>
-                {item.difference_comment && <p className="text-xs text-slate-500">{item.difference_comment}</p>}
-                {item.difference_status === 'a_justifier' && <span className="inline-flex rounded-full bg-yellow-50 px-2.5 py-1 text-xs font-bold text-yellow-800">A valider</span>}
-                {item.difference_status === 'valide' && <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800">Valide</span>}
-                {canValidate && item.difference_status === 'a_justifier' && <button type="button" onClick={() => validateItemDifference(item.id)} className="btn-secondary">Valider ecart</button>}
-              </div>
               <span>{(Number(item.quantity_ordered ?? 0) * Number(item.unit_price ?? 0)).toLocaleString('fr-FR')} Ar</span>
             </div>
           ))}
         </div>
       </section>
+
+      {hasOpenDifference && (
+        <section className="surface p-5">
+          <h2 className="text-lg font-bold">Ecarts a valider</h2>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {items.filter((item) => item.difference_status === 'a_justifier').map((item) => (
+              <div key={item.id} className="rounded-md border border-amber-200 bg-amber-50 p-3">
+                <p className="font-semibold text-amber-900">{item.articles?.name || '-'}</p>
+                <p className="mt-1 text-sm text-amber-900">{item.difference_type ? orderDifferenceTypeLabels[item.difference_type] : 'Ecart a valider'}</p>
+                {item.difference_comment && <p className="mt-1 text-xs text-amber-900">{item.difference_comment}</p>}
+                {canValidate && <button type="button" onClick={() => validateItemDifference(item.id)} className="btn-secondary mt-3">Valider ecart</button>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {needs.length > 0 && (
         <section className="surface p-5">
@@ -179,29 +164,10 @@ export function PurchaseOrderDetail() {
         {canSend && order.status === 'validee' && (
           <button type="button" onClick={send} className="btn-primary"><Send className="mr-2 h-4 w-4" /> Marquer envoyee</button>
         )}
-        {canValidate && !['annulee', 'cloturee', 'livree'].includes(order.status) && <button type="button" onClick={cancel} className="btn-secondary text-red-700"><XCircle className="mr-2 h-4 w-4" /> Annuler</button>}
+        {canValidate && !['annulee', 'cloturee', 'livree'].includes(order.status) && <button type="button" onClick={cancel} className="btn-secondary text-red-700"><XCircle className="mr-2 h-4 w-4" /> Annuler la commande</button>}
         {canValidate && ['livree', 'reception_avec_ecart'].includes(order.status) && <button type="button" onClick={close} disabled={!canClose} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50"><CheckCircle className="mr-2 h-4 w-4" /> Cloturer</button>}
         {hasOpenDifference && <p className="text-sm font-semibold text-amber-800">Cloture bloquee : validez tous les ecarts de reception.</p>}
       </section>
-
-      {['envoyee', 'partiellement_livree', 'livree', 'reception_avec_ecart', 'cloturee'].includes(order.status) && (
-        <section className="surface p-5">
-          <h2 className="text-lg font-bold">Documents de reception</h2>
-          <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-            <input type="file" accept="image/*,.pdf" onChange={(event) => setDocumentFile(event.target.files?.[0] ?? null)} className="input" />
-            <input value={documentDescription} onChange={(event) => setDocumentDescription(event.target.value)} className="input" placeholder="Description optionnelle" />
-            <button type="button" onClick={addDocument} disabled={uploadingDocument} className="btn-secondary"><FileUp className="mr-2 h-4 w-4" /> {uploadingDocument ? 'Envoi...' : 'Ajouter'}</button>
-          </div>
-          <div className="mt-4 space-y-2">
-            {order.purchase_order_documents?.map((document) => (
-              <a key={document.id} href={document.file_url} target="_blank" className="block rounded-md border border-slate-200 p-3 text-sm font-semibold text-[#1E3A8A]">
-                {document.file_name}
-                <span className="ml-2 text-xs font-normal text-slate-500">{document.description || ''}</span>
-              </a>
-            ))}
-          </div>
-        </section>
-      )}
 
       <section className="surface p-5">
         <h2 className="text-lg font-bold">Historique</h2>
