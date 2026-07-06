@@ -81,16 +81,22 @@ export type ReceptionItem = {
   quantity_ordered: number
   quantity_delivered: number
   quantity_accepted: number
+  quantity_delivered_display?: number | null
+  quantity_accepted_display?: number | null
   quantity_refused?: number
   unit_id: string
+  unit_display_id?: string | null
+  conversion_factor?: number | null
   unit_price_planned: number | null
   unit_price_real: number
+  unit_price_display?: number | null
   total?: number
   quality: QualityStatus
   quality_comment?: string | null
   has_anomaly: boolean
   articles?: Pick<Article, 'id' | 'name'> & { families?: { id: string; name: string } }
   units?: Pick<Unit, 'id' | 'name' | 'abbreviation'>
+  display_unit?: Pick<Unit, 'id' | 'name' | 'abbreviation'>
   reception_anomalies?: ReceptionAnomaly[]
 }
 
@@ -130,9 +136,14 @@ export const receptionItemSchema = z.object({
   quantity_ordered: z.number().min(0),
   quantity_delivered: z.number().min(0, 'Quantite livree obligatoire'),
   quantity_accepted: z.number().min(0, 'Quantite acceptee obligatoire'),
+  quantity_delivered_display: z.number().min(0).optional(),
+  quantity_accepted_display: z.number().min(0).optional(),
   unit_id: z.string().min(1, "L'unite est obligatoire"),
+  unit_display_id: z.string().optional(),
+  conversion_factor: z.number().positive().optional(),
   unit_price_planned: z.number().min(0).nullable(),
   unit_price_real: z.number().positive('Le prix réel doit être supérieur à 0'),
+  unit_price_display: z.number().min(0).optional(),
   quality: z.enum(qualityStatuses),
   quality_comment: z.string().optional(),
   has_anomaly: z.boolean(),

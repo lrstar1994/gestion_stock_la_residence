@@ -2,13 +2,13 @@ import { Save } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Link, useNavigate } from 'react-router-dom'
-import { listArticles } from '../../api/modules/catalog.api'
+import { listArticles, listUnits } from '../../api/modules/catalog.api'
 import { createPurchaseNeed } from '../../api/modules/purchaseNeeds.api'
 import { listSuppliers } from '../../api/modules/suppliers.api'
 import { useAuth } from '../../hooks/useAuth'
 import { needOriginLabels, needOrigins, needUrgencies, needUrgencyLabels } from '../../lib/purchaseNeeds'
 import type { NeedOrigin, NeedUrgency, PurchaseNeedFormValues } from '../../lib/purchaseNeeds'
-import type { Article } from '../../lib/catalog'
+import type { Article, Unit } from '../../lib/catalog'
 import type { Supplier } from '../../lib/suppliers'
 
 export function PurchaseNeedFormPage() {
@@ -16,6 +16,7 @@ export function PurchaseNeedFormPage() {
   const navigate = useNavigate()
   const [articles, setArticles] = useState<Article[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [units, setUnits] = useState<Unit[]>([])
   const [search, setSearch] = useState('')
   const [values, setValues] = useState<PurchaseNeedFormValues>({
     article_id: '',
@@ -34,10 +35,11 @@ export function PurchaseNeedFormPage() {
   const filteredArticles = useMemo(() => articles.filter((article) => article.name.toLowerCase().includes(search.toLowerCase())), [articles, search])
 
   useEffect(() => {
-    Promise.all([listArticles({ status: 'active', pageSize: 1000 }), listSuppliers()])
-      .then(([articleResult, loadedSuppliers]) => {
+    Promise.all([listArticles({ status: 'active', pageSize: 1000 }), listSuppliers(), listUnits()])
+      .then(([articleResult, loadedSuppliers, loadedUnits]) => {
         setArticles(articleResult.articles)
         setSuppliers(loadedSuppliers)
+        setUnits(loadedUnits)
       })
       .catch(() => toast.error('Impossible de charger les articles.'))
   }, [])
@@ -90,7 +92,7 @@ export function PurchaseNeedFormPage() {
         </label>
 
         <Field label="Quantite"><input value={values.quantity} onChange={(event) => update('quantity', Number(event.target.value))} type="number" min="0" step="0.01" className="input mt-2" /></Field>
-        <Field label="Unite"><input value={selectedArticle?.units?.abbreviation || ''} readOnly className="input mt-2 bg-slate-100" /></Field>
+        <Field label="Unite d'achat"><select value={values.unit_id} onChange={(event) => update('unit_id', event.target.value)} className="input mt-2"><option value="">Selectionner</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.abbreviation}</option>)}</select>{selectedArticle?.units?.abbreviation && <p className="mt-1 text-xs text-slate-500">Unite stock : {selectedArticle.units.abbreviation}</p>}</Field>
         <Field label="Origine"><select value={values.origin} onChange={(event) => update('origin', event.target.value as NeedOrigin)} className="input mt-2">{needOrigins.map((origin) => <option key={origin} value={origin}>{needOriginLabels[origin]}</option>)}</select></Field>
         <Field label="Urgence"><select value={values.urgency} onChange={(event) => update('urgency', event.target.value as NeedUrgency)} className="input mt-2">{needUrgencies.map((urgency) => <option key={urgency} value={urgency}>{needUrgencyLabels[urgency]}</option>)}</select></Field>
         <Field label="Date souhaitee"><input value={values.requested_date} onChange={(event) => update('requested_date', event.target.value)} type="date" className="input mt-2" /></Field>

@@ -44,7 +44,7 @@ export type PurchaseOrderItem = {
   difference_status?: OrderDifferenceStatus
   difference_validated_by?: string | null
   difference_validated_at?: string | null
-  articles?: Pick<Article, 'id' | 'name'> & { families?: { id: string; name: string } }
+  articles?: Pick<Article, 'id' | 'name' | 'unit_id'> & { families?: { id: string; name: string } }
   units?: Pick<Unit, 'id' | 'name' | 'abbreviation'>
 }
 

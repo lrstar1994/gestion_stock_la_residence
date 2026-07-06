@@ -2,19 +2,20 @@ import { Plus, Save, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Link, useNavigate } from 'react-router-dom'
-import { listArticles } from '../../api/modules/catalog.api'
+import { listArticles, listUnits } from '../../api/modules/catalog.api'
 import { createCashPurchase } from '../../api/modules/cashPurchases.api'
 import { listPurchaseNeedsGlobal } from '../../api/modules/purchaseNeeds.api'
 import { useAuth } from '../../hooks/useAuth'
 import { calculateCashTotals, cashPurchaseSourceLabels, cashPurchaseSources } from '../../lib/cashPurchases'
 import type { CashPurchaseFormValues, CashPurchaseItemFormValues, CashPurchaseSource } from '../../lib/cashPurchases'
-import type { Article } from '../../lib/catalog'
+import type { Article, Unit } from '../../lib/catalog'
 import type { PurchaseNeedGlobal } from '../../lib/purchaseNeeds'
 
 export function CashPurchaseFormPage() {
   const { profile } = useAuth()
   const navigate = useNavigate()
   const [articles, setArticles] = useState<Article[]>([])
+  const [units, setUnits] = useState<Unit[]>([])
   const [needs, setNeeds] = useState<PurchaseNeedGlobal[]>([])
   const [values, setValues] = useState<CashPurchaseFormValues>({
     buyer_id: profile?.id ?? '',
@@ -33,10 +34,12 @@ export function CashPurchaseFormPage() {
   useEffect(() => {
     Promise.all([
       listArticles({ status: 'active', pageSize: 1000 }),
+      listUnits(),
       listPurchaseNeedsGlobal({ status: 'valide', pageSize: 1000 }),
     ])
-      .then(([articleResult, needsResult]) => {
+      .then(([articleResult, loadedUnits, needsResult]) => {
         setArticles(articleResult.articles)
+        setUnits(loadedUnits)
         setNeeds(needsResult.needs)
       })
       .catch(() => toast.error('Impossible de charger les donnees.'))
@@ -115,12 +118,11 @@ export function CashPurchaseFormPage() {
         <div className="flex items-center justify-between"><h2 className="text-lg font-bold">Articles a acheter</h2><button type="button" onClick={addItem} className="btn-secondary"><Plus className="mr-2 h-4 w-4" /> Ajouter</button></div>
         <div className="mt-4 space-y-3">
           {values.items.map((item, index) => {
-            const article = articles.find((candidate) => candidate.id === item.article_id)
             return (
               <div key={index} className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[1fr_120px_120px_150px_130px_80px]">
                 <select value={item.article_id} onChange={(event) => selectArticle(index, event.target.value)} className="input"><option value="">Article</option>{articles.map((article) => <option key={article.id} value={article.id}>{article.name}</option>)}</select>
                 <input value={item.quantity_planned} onChange={(event) => updateItem(index, { quantity_planned: Number(event.target.value) })} type="number" min="0" step="0.01" className="input" />
-                <input value={article?.units?.abbreviation || ''} readOnly className="input bg-slate-100" />
+                <select value={item.unit_id} onChange={(event) => updateItem(index, { unit_id: event.target.value })} className="input"><option value="">Unite</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.abbreviation}</option>)}</select>
                 <input value={item.unit_price_estimated} onChange={(event) => updateItem(index, { unit_price_estimated: Number(event.target.value) })} type="number" min="0" step="0.01" className="input" />
                 <p className="rounded-md bg-white px-3 py-2 text-sm font-bold">{(item.quantity_planned * item.unit_price_estimated).toLocaleString('fr-FR')} Ar</p>
                 <button type="button" onClick={() => removeItem(index)} className="btn-secondary text-red-700"><Trash2 className="h-4 w-4" /></button>

@@ -2,11 +2,11 @@ import { Plus, Save, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { listArticles } from '../../api/modules/catalog.api'
+import { listArticles, listUnits } from '../../api/modules/catalog.api'
 import { createPurchaseOrder, getPurchaseGroupNeeds, getPurchaseOrder, listOrderablePurchaseGroups, updatePurchaseOrder } from '../../api/modules/purchaseOrders.api'
 import { listSuppliers } from '../../api/modules/suppliers.api'
 import { useAuth } from '../../hooks/useAuth'
-import type { Article } from '../../lib/catalog'
+import type { Article, Unit } from '../../lib/catalog'
 import { calculateOrderTotal, groupLabel } from '../../lib/purchaseOrders'
 import type { PurchaseOrderFormValues } from '../../lib/purchaseOrders'
 import type { PurchaseGroup } from '../../lib/purchaseNeeds'
@@ -35,17 +35,20 @@ export function PurchaseOrderFormPage() {
   const isEdit = Boolean(id)
   const [values, setValues] = useState<PurchaseOrderFormValues>(emptyForm)
   const [articles, setArticles] = useState<Article[]>([])
+  const [units, setUnits] = useState<Unit[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [groups, setGroups] = useState<PurchaseGroup[]>([])
   const total = useMemo(() => calculateOrderTotal(values.items), [values.items])
 
   const load = useCallback(async () => {
-    const [articlesResult, loadedSuppliers, loadedGroups] = await Promise.all([
+    const [articlesResult, loadedUnits, loadedSuppliers, loadedGroups] = await Promise.all([
       listArticles({ page: 1, pageSize: 1000, status: 'active' }),
+      listUnits(),
       listSuppliers(),
       listOrderablePurchaseGroups(),
     ])
     setArticles(articlesResult.articles)
+    setUnits(loadedUnits)
     setSuppliers(loadedSuppliers)
     setGroups(loadedGroups)
 
@@ -211,7 +214,7 @@ export function PurchaseOrderFormPage() {
               <div key={`${item.article_id}-${index}`} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_110px_120px_140px_140px_44px] xl:items-end">
                 <label className="block"><span className="field-label">Article</span><select value={item.article_id} onChange={(event) => changeArticle(index, event.target.value)} className="input mt-2"><option value="">Article</option>{articles.map((article) => <option key={article.id} value={article.id}>{article.name}</option>)}</select></label>
                 <label className="block"><span className="field-label">Quantite</span><input type="number" value={item.quantity_ordered} onChange={(event) => updateItem(index, { quantity_ordered: Number(event.target.value) })} className="input mt-2" /></label>
-                <label className="block"><span className="field-label">Unite</span><select value={item.unit_id} onChange={(event) => updateItem(index, { unit_id: event.target.value })} className="input mt-2"><option value={selectedArticle?.unit_id ?? item.unit_id}>{selectedArticle?.units?.abbreviation ?? 'Unite'}</option></select></label>
+                <label className="block"><span className="field-label">Unite d'achat</span><select value={item.unit_id} onChange={(event) => updateItem(index, { unit_id: event.target.value })} className="input mt-2"><option value="">Unite</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.abbreviation}</option>)}</select>{selectedArticle?.units?.abbreviation && <p className="mt-1 text-xs text-slate-500">Stock : {selectedArticle.units.abbreviation}</p>}</label>
                 <label className="block"><span className="field-label">Prix unitaire</span><input type="number" value={item.unit_price} onChange={(event) => updateItem(index, { unit_price: Number(event.target.value) })} className="input mt-2" /></label>
                 <div><span className="field-label">Total</span><p className="mt-2 font-bold">{(Number(item.quantity_ordered) * Number(item.unit_price)).toLocaleString('fr-FR')} Ar</p></div>
                 <button type="button" onClick={() => removeItem(index)} className="btn-secondary text-red-700"><Trash2 className="h-4 w-4" /></button>

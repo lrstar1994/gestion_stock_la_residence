@@ -51,7 +51,7 @@ export async function listReceptions(filters: ReceptionFilters = {}) {
 export async function getReception(id: string) {
   const { data, error } = await supabase.schema('stock')
     .from('receptions')
-    .select('*, suppliers(*), locations(id, name), purchase_orders(id, reference, status, total_amount, purchase_order_items(*, articles(id, name, families(id, name)), units(id, name, abbreviation))), cash_purchases(id, reference, status, amount_requested, amount_validated, amount_given, total_purchased, change_expected, change_returned, difference, cash_purchase_items(*, articles(id, name, units(id, name, abbreviation)), units(id, name, abbreviation))), receiver:profiles!receptions_created_by_fkey(id, full_name, role), validator:profiles!receptions_validated_by_fkey(id, full_name), reception_items(*, articles(id, name, families(id, name)), units(id, name, abbreviation), reception_anomalies(*)), reception_documents(*), reception_history(*, actor:profiles!reception_history_created_by_fkey(id, full_name))')
+    .select('*, suppliers(*), locations(id, name), purchase_orders(id, reference, status, total_amount, purchase_order_items(*, articles(id, name, unit_id, families(id, name)), units(id, name, abbreviation))), cash_purchases(id, reference, status, amount_requested, amount_validated, amount_given, total_purchased, change_expected, change_returned, difference, cash_purchase_items(*, articles(id, name, unit_id, units(id, name, abbreviation)), units(id, name, abbreviation))), receiver:profiles!receptions_created_by_fkey(id, full_name, role), validator:profiles!receptions_validated_by_fkey(id, full_name), reception_items(*, articles(id, name, families(id, name)), units(id, name, abbreviation), display_unit:units!reception_items_unit_display_id_fkey(id, name, abbreviation), reception_anomalies(*)), reception_documents(*), reception_history(*, actor:profiles!reception_history_created_by_fkey(id, full_name))')
     .eq('id', id)
     .single()
   if (error) throw error
@@ -61,7 +61,7 @@ export async function getReception(id: string) {
 export async function listReceivableOrders() {
   const { data, error } = await supabase.schema('stock')
     .from('purchase_orders')
-    .select('*, suppliers(*), purchase_order_items(*, articles(id, name, families(id, name)), units(id, name, abbreviation))')
+    .select('*, suppliers(*), purchase_order_items(*, articles(id, name, unit_id, families(id, name)), units(id, name, abbreviation))')
     .in('status', ['envoyee', 'partiellement_livree', 'reception_avec_ecart'])
     .order('delivery_date', { ascending: true })
   if (error) throw error
@@ -71,7 +71,7 @@ export async function listReceivableOrders() {
 export async function listReceivableCashPurchases() {
   const { data, error } = await supabase.schema('stock')
     .from('cash_purchases')
-    .select('*, cash_purchase_items(*, articles(id, name, units(id, name, abbreviation)), units(id, name, abbreviation))')
+    .select('*, cash_purchase_items(*, articles(id, name, unit_id, units(id, name, abbreviation)), units(id, name, abbreviation))')
     .eq('status', 'cloture')
     .order('request_date', { ascending: false })
   if (error) throw error
@@ -189,7 +189,7 @@ async function assertOrderQuantitiesAvailable(values: ReceptionFormValues, curre
 
     let query = supabase.schema('stock')
       .from('reception_items')
-      .select('quantity_accepted, receptions!inner(id, purchase_order_id, status)')
+      .select('quantity_accepted, quantity_accepted_display, receptions!inner(id, purchase_order_id, status)')
       .eq('article_id', item.article_id)
       .eq('receptions.purchase_order_id', values.purchase_order_id)
       .neq('receptions.status', 'refusee')
@@ -201,8 +201,8 @@ async function assertOrderQuantitiesAvailable(values: ReceptionFormValues, curre
     const { data: alreadyReceived, error: receivedError } = await query
     if (receivedError) throw receivedError
 
-    const existingQuantity = (alreadyReceived ?? []).reduce((sum, row) => sum + Number(row.quantity_accepted ?? 0), 0)
-    if (existingQuantity + Number(item.quantity_accepted ?? 0) > Number(orderItem.quantity_ordered ?? 0)) {
+    const existingQuantity = (alreadyReceived ?? []).reduce((sum, row) => sum + Number(row.quantity_accepted_display ?? row.quantity_accepted ?? 0), 0)
+    if (existingQuantity + Number(item.quantity_accepted_display ?? item.quantity_accepted ?? 0) > Number(orderItem.quantity_ordered ?? 0)) {
       throw new Error('Cette quantite depasse le restant a receptionner pour la commande')
     }
   }
@@ -221,9 +221,14 @@ async function replaceReceptionItems(receptionId: string, items: ReceptionFormVa
         quantity_ordered: item.quantity_ordered,
         quantity_delivered: item.quantity_delivered,
         quantity_accepted: item.quantity_accepted,
+        quantity_delivered_display: item.quantity_delivered_display ?? item.quantity_delivered,
+        quantity_accepted_display: item.quantity_accepted_display ?? item.quantity_accepted,
         unit_id: item.unit_id,
+        unit_display_id: item.unit_display_id || item.unit_id,
+        conversion_factor: item.conversion_factor ?? 1,
         unit_price_planned: item.unit_price_planned,
         unit_price_real: item.unit_price_real,
+        unit_price_display: item.unit_price_display ?? item.unit_price_real,
         quality: item.quality,
         quality_comment: cleanNullable(item.quality_comment),
         has_anomaly: item.has_anomaly || (item.anomalies ?? []).length > 0,
@@ -260,9 +265,14 @@ export async function submitReception(id: string, profileId?: string) {
     quantity_ordered: Number(item.quantity_ordered ?? 0),
     quantity_delivered: Number(item.quantity_delivered ?? 0),
     quantity_accepted: Number(item.quantity_accepted ?? 0),
+    quantity_delivered_display: Number(item.quantity_delivered_display ?? item.quantity_delivered ?? 0),
+    quantity_accepted_display: Number(item.quantity_accepted_display ?? item.quantity_accepted ?? 0),
     unit_id: item.unit_id,
+    unit_display_id: item.unit_display_id ?? item.unit_id,
+    conversion_factor: Number(item.conversion_factor ?? 1),
     unit_price_planned: Number(item.unit_price_planned ?? 0),
     unit_price_real: Number(item.unit_price_real ?? 0),
+    unit_price_display: Number(item.unit_price_display ?? item.unit_price_real ?? 0),
     quality: item.quality,
     quality_comment: item.quality_comment ?? '',
     has_anomaly: item.has_anomaly,
@@ -333,7 +343,7 @@ async function applyReceptionSideEffects(id: string, profileId?: string) {
       if (orderItem) {
         const { error } = await supabase.schema('stock')
           .from('purchase_order_items')
-          .update({ quantity_received: Number(orderItem.quantity_received ?? 0) + Number(item.quantity_accepted ?? 0) })
+          .update({ quantity_received: Number(orderItem.quantity_received ?? 0) + Number(item.quantity_accepted_display ?? item.quantity_accepted ?? 0) })
           .eq('id', orderItem.id)
         if (error) throw error
       }

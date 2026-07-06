@@ -2,16 +2,17 @@ import { Plus, Save, Trash2, Upload } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { listArticles, listLocations } from '../../api/modules/catalog.api'
+import { listArticles, listLocations, listUnits } from '../../api/modules/catalog.api'
 import { createReception, getReception, listDefaultReceptionLocation, listReceivableCashPurchases, listReceivableOrders, updateReception, uploadReceptionAnomalyPhoto } from '../../api/modules/receptions.api'
 import { listSuppliers } from '../../api/modules/suppliers.api'
 import { useAuth } from '../../hooks/useAuth'
-import type { Article, Location } from '../../lib/catalog'
+import type { Article, Location, Unit } from '../../lib/catalog'
 import type { PurchaseOrder } from '../../lib/purchaseOrders'
 import { anomalyTypeLabels, anomalyTypes, calculateReceptionTotal, qualityStatusLabels, qualityStatuses } from '../../lib/receptions'
 import type { AnomalyType, ReceptionFormValues } from '../../lib/receptions'
 import type { Supplier } from '../../lib/suppliers'
 import type { CashPurchase } from '../../lib/cashPurchases'
+import { getUnitConversionFactor } from '../../lib/unitConversions'
 
 const today = new Date().toISOString().slice(0, 10)
 
@@ -44,6 +45,7 @@ export function ReceptionFormPage() {
   const [articles, setArticles] = useState<Article[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [locations, setLocations] = useState<Location[]>([])
+  const [units, setUnits] = useState<Unit[]>([])
   const [orders, setOrders] = useState<PurchaseOrder[]>([])
   const [cashPurchases, setCashPurchases] = useState<CashPurchase[]>([])
   const total = useMemo(() => calculateReceptionTotal(values.items), [values.items])
@@ -57,14 +59,20 @@ export function ReceptionFormPage() {
       location_id: current.location_id || fallbackLocationId,
       items: order.purchase_order_items?.map((item) => {
         const remaining = Math.max(0, Number(item.quantity_ordered ?? 0) - Number(item.quantity_received ?? 0))
+        const stockUnitId = item.articles?.unit_id ?? item.unit_id
         return {
           article_id: item.article_id,
           quantity_ordered: remaining,
           quantity_delivered: remaining,
           quantity_accepted: remaining,
-          unit_id: item.unit_id,
+          unit_id: stockUnitId,
+          unit_display_id: item.unit_id,
+          conversion_factor: item.unit_id === stockUnitId ? 1 : undefined,
+          quantity_delivered_display: remaining,
+          quantity_accepted_display: remaining,
           unit_price_planned: Number(item.unit_price ?? 0),
           unit_price_real: Number(item.unit_price ?? 0),
+          unit_price_display: Number(item.unit_price ?? 0),
           quality: 'conforme',
           quality_comment: '',
           has_anomaly: false,
@@ -91,9 +99,14 @@ export function ReceptionFormPage() {
         quantity_ordered: Number(item.quantity_planned ?? 0),
         quantity_delivered: Number(item.quantity_bought ?? 0),
         quantity_accepted: Number(item.quantity_bought ?? 0),
-        unit_id: item.unit_id,
+        unit_id: item.articles?.unit_id ?? item.unit_id,
+        unit_display_id: item.unit_id,
+        conversion_factor: item.unit_id === (item.articles?.unit_id ?? item.unit_id) ? 1 : undefined,
+        quantity_delivered_display: Number(item.quantity_bought ?? 0),
+        quantity_accepted_display: Number(item.quantity_bought ?? 0),
         unit_price_planned: Number(item.unit_price_estimated ?? 0),
         unit_price_real: Number(item.unit_price_real ?? 0),
+        unit_price_display: Number(item.unit_price_real ?? 0),
         quality: 'conforme',
         quality_comment: '',
         has_anomaly: false,
@@ -113,10 +126,11 @@ export function ReceptionFormPage() {
   }
 
   const load = useCallback(async () => {
-    const [articlesResult, loadedSuppliers, loadedLocations, loadedOrders, loadedCashPurchases, defaultLocation] = await Promise.all([
+    const [articlesResult, loadedSuppliers, loadedLocations, loadedUnits, loadedOrders, loadedCashPurchases, defaultLocation] = await Promise.all([
       listArticles({ page: 1, pageSize: 1000, status: 'active' }),
       listSuppliers(),
       listLocations(),
+      listUnits(),
       listReceivableOrders(),
       listReceivableCashPurchases(),
       listDefaultReceptionLocation(),
@@ -124,6 +138,7 @@ export function ReceptionFormPage() {
     setArticles(articlesResult.articles)
     setSuppliers(loadedSuppliers)
     setLocations(loadedLocations)
+    setUnits(loadedUnits)
     setOrders(loadedOrders)
     setCashPurchases(loadedCashPurchases as CashPurchase[])
 
@@ -144,8 +159,13 @@ export function ReceptionFormPage() {
           quantity_delivered: Number(item.quantity_delivered ?? 0),
           quantity_accepted: Number(item.quantity_accepted ?? 0),
           unit_id: item.unit_id,
+          unit_display_id: item.unit_display_id ?? item.unit_id,
+          conversion_factor: Number(item.conversion_factor ?? 1),
+          quantity_delivered_display: Number(item.quantity_delivered_display ?? item.quantity_delivered ?? 0),
+          quantity_accepted_display: Number(item.quantity_accepted_display ?? item.quantity_accepted ?? 0),
           unit_price_planned: Number(item.unit_price_planned ?? 0),
           unit_price_real: Number(item.unit_price_real ?? 0),
+          unit_price_display: Number(item.unit_price_display ?? item.unit_price_real ?? 0),
           quality: item.quality,
           quality_comment: item.quality_comment ?? '',
           has_anomaly: item.has_anomaly,
@@ -183,8 +203,13 @@ export function ReceptionFormPage() {
         quantity_delivered: 1,
         quantity_accepted: 1,
         unit_id: article?.unit_id ?? '',
+        unit_display_id: article?.unit_id ?? '',
+        conversion_factor: 1,
+        quantity_delivered_display: 1,
+        quantity_accepted_display: 1,
         unit_price_planned: 0,
         unit_price_real: 0,
+        unit_price_display: 0,
         quality: 'conforme',
         quality_comment: '',
         has_anomaly: false,
@@ -197,9 +222,36 @@ export function ReceptionFormPage() {
     setValues((current) => ({ ...current, items: current.items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item) }))
   }
 
+  const computeConversionPatch = (item: ReceptionFormValues['items'][number], patch: Partial<ReceptionFormValues['items'][number]> = {}) => {
+    const next = { ...item, ...patch }
+    const article = articles.find((row) => row.id === next.article_id)
+    const displayUnit = units.find((unit) => unit.id === (next.unit_display_id || next.unit_id))
+    const stockUnit = units.find((unit) => unit.id === (article?.unit_id || next.unit_id))
+    const autoFactor = getUnitConversionFactor(displayUnit, stockUnit)
+    const factor = Number(next.conversion_factor ?? autoFactor ?? 1)
+    const deliveredDisplay = Number(next.quantity_delivered_display ?? next.quantity_delivered ?? 0)
+    const acceptedDisplay = Number(next.quantity_accepted_display ?? next.quantity_accepted ?? 0)
+    const displayPrice = Number(next.unit_price_display ?? next.unit_price_real ?? 0)
+
+    return {
+      ...patch,
+      unit_id: article?.unit_id ?? next.unit_id,
+      conversion_factor: factor,
+      quantity_delivered: deliveredDisplay * factor,
+      quantity_accepted: acceptedDisplay * factor,
+      unit_price_real: factor > 0 ? displayPrice / factor : displayPrice,
+    }
+  }
+
   const changeArticle = (index: number, articleId: string) => {
     const article = articles.find((item) => item.id === articleId)
-    updateItem(index, { article_id: articleId, unit_id: article?.unit_id ?? '' })
+    const current = values.items[index]
+    updateItem(index, computeConversionPatch(current, {
+      article_id: articleId,
+      unit_id: article?.unit_id ?? '',
+      unit_display_id: article?.unit_id ?? '',
+      conversion_factor: 1,
+    }))
   }
 
   const addAnomaly = (index: number) => {
@@ -316,7 +368,12 @@ export function ReceptionFormPage() {
         </div>
         <div className="divide-y divide-slate-200">
           {values.items.map((item, index) => {
-            const refused = Math.max(0, Number(item.quantity_delivered) - Number(item.quantity_accepted))
+            const selectedArticle = articles.find((article) => article.id === item.article_id)
+            const displayUnit = units.find((unit) => unit.id === (item.unit_display_id || item.unit_id))
+            const stockUnit = units.find((unit) => unit.id === item.unit_id)
+            const autoFactor = getUnitConversionFactor(displayUnit, stockUnit)
+            const needsManualFactor = Boolean(displayUnit && stockUnit && !autoFactor && displayUnit.id !== stockUnit.id)
+            const refused = Math.max(0, Number(item.quantity_delivered_display ?? item.quantity_delivered) - Number(item.quantity_accepted_display ?? item.quantity_accepted))
             const acceptedTotal = Number(item.quantity_accepted ?? 0) * Number(item.unit_price_real ?? 0)
             return (
               <div key={`${item.article_id}-${index}`} className="space-y-4 px-5 py-4">
@@ -334,13 +391,28 @@ export function ReceptionFormPage() {
                   )}
                   </div>
                   <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-[100px_120px_120px_100px_130px_130px_130px] xl:items-end">
-                    <Info label="Commande" value={Number(item.quantity_ordered).toLocaleString('fr-FR')} />
-                    <label className="block"><span className="field-label">Livre</span><input type="number" value={item.quantity_delivered} onChange={(event) => updateItem(index, { quantity_delivered: Number(event.target.value) })} className="input mt-2" /></label>
-                    <label className="block"><span className="field-label">Accepte</span><input type="number" value={item.quantity_accepted} onChange={(event) => updateItem(index, { quantity_accepted: Number(event.target.value) })} className="input mt-2" /></label>
-                    <Info label="Refuse" value={refused.toLocaleString('fr-FR')} />
-                    <Info label="Prix prevu" value={`${Number(item.unit_price_planned ?? 0).toLocaleString('fr-FR')} Ar`} />
-                    <label className="block"><span className="field-label">Prix reel</span><input type="number" value={item.unit_price_real} onChange={(event) => updateItem(index, { unit_price_real: Number(event.target.value) })} className="input mt-2" /></label>
+                    <Info label="Commande" value={`${Number(item.quantity_ordered).toLocaleString('fr-FR')} ${displayUnit?.abbreviation ?? ''}`} />
+                    <label className="block">
+                      <span className="field-label">Unite recue</span>
+                      <select value={item.unit_display_id || item.unit_id} onChange={(event) => updateItem(index, computeConversionPatch(item, { unit_display_id: event.target.value, conversion_factor: undefined }))} className="input mt-2">
+                        {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.abbreviation}</option>)}
+                      </select>
+                    </label>
+                    <label className="block"><span className="field-label">Livre</span><input type="number" value={item.quantity_delivered_display ?? item.quantity_delivered} onChange={(event) => updateItem(index, computeConversionPatch(item, { quantity_delivered_display: Number(event.target.value) }))} className="input mt-2" /></label>
+                    <label className="block"><span className="field-label">Accepte</span><input type="number" value={item.quantity_accepted_display ?? item.quantity_accepted} onChange={(event) => updateItem(index, computeConversionPatch(item, { quantity_accepted_display: Number(event.target.value) }))} className="input mt-2" /></label>
+                    <Info label="Refuse" value={`${refused.toLocaleString('fr-FR')} ${displayUnit?.abbreviation ?? ''}`} />
+                    <Info label="Prix prevu" value={`${Number(item.unit_price_planned ?? 0).toLocaleString('fr-FR')} Ar / ${displayUnit?.abbreviation ?? ''}`} />
+                    <label className="block"><span className="field-label">Prix reel</span><input type="number" value={item.unit_price_display ?? item.unit_price_real} onChange={(event) => updateItem(index, computeConversionPatch(item, { unit_price_display: Number(event.target.value) }))} className="input mt-2" /></label>
                     <Info label="Total accepte" value={`${acceptedTotal.toLocaleString('fr-FR')} Ar`} />
+                  </div>
+                  <div className="grid gap-3 rounded-md bg-white p-3 text-sm md:grid-cols-3">
+                    <label className="block">
+                      <span className="field-label">Facteur</span>
+                      <input type="number" min="0" step="0.0001" value={item.conversion_factor ?? 1} onChange={(event) => updateItem(index, computeConversionPatch(item, { conversion_factor: Number(event.target.value) }))} className="input mt-2" />
+                    </label>
+                    <Info label="Entree stock" value={`${Number(item.quantity_accepted ?? 0).toLocaleString('fr-FR')} ${stockUnit?.abbreviation ?? selectedArticle?.units?.abbreviation ?? ''}`} />
+                    <Info label="Prix stock" value={`${Number(item.unit_price_real ?? 0).toLocaleString('fr-FR')} Ar / ${stockUnit?.abbreviation ?? selectedArticle?.units?.abbreviation ?? ''}`} />
+                    {needsManualFactor && <p className="font-semibold text-amber-700 md:col-span-3">Conversion manuelle requise : indiquez combien vaut 1 {displayUnit?.abbreviation} en {stockUnit?.abbreviation}.</p>}
                   </div>
                 </div>
                 <div className="grid gap-3 md:grid-cols-[180px_1fr_auto]">

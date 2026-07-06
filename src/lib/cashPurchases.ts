@@ -89,7 +89,7 @@ export type CashPurchaseItem = {
   invoice_date?: string | null
   supplier?: string | null
   comment?: string | null
-  articles?: Pick<Article, 'id' | 'name'> & { units?: Pick<Unit, 'id' | 'name' | 'abbreviation'> }
+  articles?: Pick<Article, 'id' | 'name' | 'unit_id'> & { units?: Pick<Unit, 'id' | 'name' | 'abbreviation'> }
   units?: Pick<Unit, 'id' | 'name' | 'abbreviation'>
 }
 
