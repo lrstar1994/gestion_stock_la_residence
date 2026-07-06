@@ -2,13 +2,13 @@ import { Plus, Save, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Link, useNavigate } from 'react-router-dom'
-import { listArticles, listLocations } from '../../api/modules/catalog.api'
+import { listArticles, listLocations, listUnits } from '../../api/modules/catalog.api'
 import { listEvents } from '../../api/modules/events.api'
 import { getRecipe, listRecipes } from '../../api/modules/recipes.api'
 import { createSale, getSalePriceSuggestions } from '../../api/modules/sales.api'
 import { getUnconfirmedInitialInventoryCount } from '../../api/modules/inventories.api'
 import { useAuth } from '../../hooks/useAuth'
-import type { Article, Location } from '../../lib/catalog'
+import type { Article, Location, Unit } from '../../lib/catalog'
 import type { Event } from '../../lib/events'
 import type { Recipe } from '../../lib/recipes'
 import {
@@ -23,6 +23,7 @@ import {
   serviceModes,
 } from '../../lib/sales'
 import type { ProductType, SaleFormValues } from '../../lib/sales'
+import { getUnitConversionFactor } from '../../lib/unitConversions'
 
 const nowValue = new Date().toISOString().slice(0, 16)
 
@@ -43,6 +44,7 @@ export function SaleFormPage() {
   const navigate = useNavigate()
   const [values, setValues] = useState<SaleFormValues>(emptyForm)
   const [articles, setArticles] = useState<Article[]>([])
+  const [units, setUnits] = useState<Unit[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [events, setEvents] = useState<Event[]>([])
   const [recipes, setRecipes] = useState<Recipe[]>([])
@@ -54,13 +56,15 @@ export function SaleFormPage() {
   useEffect(() => {
     Promise.all([
       listArticles({ page: 1, pageSize: 1000, status: 'active', sellableWithoutTransformation: true }),
+      listUnits(),
       listLocations(),
       listEvents({ page: 1, pageSize: 100, status: 'planifie' }),
       listRecipes({ page: 1, pageSize: 1000, status: 'validee' }),
       getSalePriceSuggestions(),
     ])
-      .then(([articleResult, loadedLocations, eventResult, recipeResult, suggestions]) => {
+      .then(([articleResult, loadedUnits, loadedLocations, eventResult, recipeResult, suggestions]) => {
         setArticles(articleResult.articles)
+        setUnits(loadedUnits)
         setLocations(loadedLocations)
         setEvents(eventResult.events)
         setRecipes(recipeResult.recipes)
@@ -127,6 +131,10 @@ export function SaleFormPage() {
         product_type: 'produit_brut',
         quantity: 1,
         quantity_offered: 0,
+        unit_display_id: article?.unit_id ?? '',
+        unit_stock_id: article?.unit_id ?? '',
+        quantity_stock: 1,
+        conversion_factor: 1,
         unit_price: 0,
         discount: 0,
         location_id: allowedLocations[0]?.id ?? '',
@@ -144,6 +152,24 @@ export function SaleFormPage() {
     }))
   }
 
+  const getRawSaleConversionPatch = (item: SaleFormValues['items'][number], patch: Partial<SaleFormValues['items'][number]> = {}) => {
+    const next = { ...item, ...patch }
+    const article = articles.find((row) => row.id === next.article_id)
+    const stockUnit = units.find((unit) => unit.id === article?.unit_id)
+    const displayUnit = units.find((unit) => unit.id === (next.unit_display_id || stockUnit?.id))
+    const automaticFactor = getUnitConversionFactor(displayUnit, stockUnit)
+    const factor = automaticFactor ?? Number(next.conversion_factor ?? 0)
+    const billableQuantity = Math.max(0, Number(next.quantity ?? 0) - Number(next.quantity_offered ?? 0))
+
+    return {
+      ...patch,
+      unit_display_id: displayUnit?.id ?? '',
+      unit_stock_id: stockUnit?.id ?? '',
+      conversion_factor: factor,
+      quantity_stock: billableQuantity * factor,
+    }
+  }
+
   const removeItem = (index: number) => {
     setValues((current) => ({ ...current, items: current.items.filter((_, itemIndex) => itemIndex !== index) }))
   }
@@ -158,6 +184,10 @@ export function SaleFormPage() {
         product_type: productType,
         article_id: '',
         recipe_id: recipeId,
+        unit_display_id: '',
+        unit_stock_id: '',
+        quantity_stock: undefined,
+        conversion_factor: undefined,
         location_id: ensureAllowedLocation(current.location_id, allowedLocations),
         unit_price: Number(recipe?.final_price ?? current.unit_price),
       })
@@ -171,6 +201,10 @@ export function SaleFormPage() {
       product_type: productType,
       article_id: articleId,
       recipe_id: '',
+      unit_display_id: article?.unit_id ?? '',
+      unit_stock_id: article?.unit_id ?? '',
+      quantity_stock: Math.max(0, Number(current.quantity ?? 0) - Number(current.quantity_offered ?? 0)),
+      conversion_factor: 1,
       location_id: ensureAllowedLocation(current.location_id, allowedLocations),
       unit_price: suggestion?.suggestedPrice ?? current.unit_price,
     })
@@ -181,11 +215,14 @@ export function SaleFormPage() {
     const article = articles.find((item) => item.id === articleId)
     const allowedLocations = getArticleAllowedLocations(article)
     const suggestion = rawPrices.get(articleId)
-    updateItem(index, {
+    updateItem(index, getRawSaleConversionPatch(current, {
       article_id: articleId,
       location_id: ensureAllowedLocation(current.location_id, allowedLocations),
+      unit_display_id: article?.unit_id ?? '',
+      unit_stock_id: article?.unit_id ?? '',
+      conversion_factor: 1,
       unit_price: suggestion?.suggestedPrice ?? current.unit_price,
-    })
+    }))
   }
 
   const changeRecipe = async (index: number, recipeId: string) => {
@@ -195,6 +232,10 @@ export function SaleFormPage() {
     updateItem(index, {
       recipe_id: recipeId,
       article_id: '',
+      unit_display_id: '',
+      unit_stock_id: '',
+      quantity_stock: undefined,
+      conversion_factor: undefined,
       location_id: ensureAllowedLocation(current.location_id, allowedLocations),
       unit_price: Number(recipe?.final_price ?? current.unit_price),
     })
@@ -255,10 +296,14 @@ export function SaleFormPage() {
             const article = articles.find((row) => row.id === item.article_id)
             const recipe = recipeDetails.get(item.recipe_id ?? '') ?? recipes.find((row) => row.id === item.recipe_id)
             const allowedLocations = getAllowedLocationsForItem(item)
+            const displayUnit = units.find((unit) => unit.id === (item.unit_display_id || article?.unit_id))
+            const stockUnit = units.find((unit) => unit.id === (item.unit_stock_id || article?.unit_id))
+            const automaticFactor = getUnitConversionFactor(displayUnit, stockUnit)
+            const needsManualFactor = item.product_type === 'produit_brut' && Boolean(displayUnit && stockUnit && !automaticFactor && displayUnit.id !== stockUnit.id)
             const lineTotal = Math.max(0, (Number(item.quantity) - Number(item.quantity_offered ?? 0)) * Number(item.unit_price) - Number(item.discount ?? 0))
             return (
               <div key={`${item.article_id || item.recipe_id || 'line'}-${index}`} className="space-y-3 px-5 py-4">
-                <div className="grid gap-3 xl:grid-cols-[140px_180px_1fr_90px_90px_120px_110px_110px_44px] xl:items-end">
+                <div className="grid gap-3 xl:grid-cols-[120px_170px_1fr_95px_110px_90px_110px_100px_110px_44px] xl:items-end">
                   <label><span className="field-label">Type</span><select value={item.product_type} onChange={(event) => void changeProductType(index, event.target.value as ProductType)} className="input mt-2">{productTypes.map((type) => <option key={type} value={type}>{productTypeLabels[type]}</option>)}</select></label>
                   <label>
                     <span className="field-label">Localisation</span>
@@ -284,13 +329,41 @@ export function SaleFormPage() {
                       </select>
                     </label>
                   )}
-                  <label><span className="field-label">Quantite</span><input type="number" value={item.quantity} onChange={(event) => updateItem(index, { quantity: Number(event.target.value) })} className="input mt-2" /></label>
-                  <label><span className="field-label">Offert</span><input type="number" value={item.quantity_offered} onChange={(event) => updateItem(index, { quantity_offered: Number(event.target.value) })} className="input mt-2" /></label>
+                  <label><span className="field-label">Quantite</span><input type="number" min="0" step="0.01" value={item.quantity} onChange={(event) => updateItem(index, item.product_type === 'produit_brut' ? getRawSaleConversionPatch(item, { quantity: Number(event.target.value) }) : { quantity: Number(event.target.value) })} className="input mt-2" /></label>
+                  {item.product_type === 'produit_brut' ? (
+                    <label>
+                      <span className="field-label">Unite vente</span>
+                      <select value={item.unit_display_id || article?.unit_id || ''} onChange={(event) => updateItem(index, getRawSaleConversionPatch(item, { unit_display_id: event.target.value, conversion_factor: undefined }))} className="input mt-2">
+                        <option value="">Unite</option>
+                        {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.abbreviation}</option>)}
+                      </select>
+                    </label>
+                  ) : (
+                    <div><span className="field-label">Unite</span><p className="mt-2 font-semibold text-slate-600">portion</p></div>
+                  )}
+                  <label><span className="field-label">Offert</span><input type="number" min="0" step="0.01" value={item.quantity_offered} onChange={(event) => updateItem(index, item.product_type === 'produit_brut' ? getRawSaleConversionPatch(item, { quantity_offered: Number(event.target.value) }) : { quantity_offered: Number(event.target.value) })} className="input mt-2" /></label>
                   <label><span className="field-label">Prix</span><input type="number" value={item.unit_price} onChange={(event) => updateItem(index, { unit_price: Number(event.target.value) })} className="input mt-2" /></label>
                   <label><span className="field-label">Remise</span><input type="number" value={item.discount} onChange={(event) => updateItem(index, { discount: Number(event.target.value) })} className="input mt-2" /></label>
-                  <div><span className="field-label">Total</span><p className="mt-2 font-bold">{lineTotal.toLocaleString('fr-FR')} Ar</p><p className="text-xs text-slate-500">{item.product_type === 'produit_brut' ? article?.units?.abbreviation : recipe?.code}</p></div>
+                  <div><span className="field-label">Total</span><p className="mt-2 font-bold">{lineTotal.toLocaleString('fr-FR')} Ar</p><p className="text-xs text-slate-500">{item.product_type === 'produit_brut' ? displayUnit?.abbreviation : recipe?.code}</p></div>
                   <button type="button" onClick={() => removeItem(index)} className="btn-secondary text-red-700"><Trash2 className="h-4 w-4" /></button>
                 </div>
+                {item.product_type === 'produit_brut' && (
+                  <div className="grid gap-3 rounded-md bg-slate-50 p-3 text-xs font-semibold text-slate-700 md:grid-cols-[1fr_150px_1fr] md:items-end">
+                    <p>
+                      Sortie stock : {Number(item.quantity_stock ?? 0).toLocaleString('fr-FR')} {stockUnit?.abbreviation ?? article?.units?.abbreviation ?? ''}
+                      {displayUnit && stockUnit && displayUnit.id !== stockUnit.id ? ` pour ${Number(Math.max(0, Number(item.quantity ?? 0) - Number(item.quantity_offered ?? 0))).toLocaleString('fr-FR')} ${displayUnit.abbreviation}` : ''}
+                    </p>
+                    <label>
+                      <span className="field-label">Facteur</span>
+                      <input type="number" min="0" step="0.0001" value={item.conversion_factor ?? 1} onChange={(event) => updateItem(index, getRawSaleConversionPatch(item, { conversion_factor: Number(event.target.value) }))} disabled={!needsManualFactor} className="input mt-2 disabled:bg-slate-100" />
+                    </label>
+                    <p className={needsManualFactor ? 'text-amber-700' : 'text-emerald-700'}>
+                      {needsManualFactor
+                        ? `Conversion manuelle requise : indiquez combien vaut 1 ${displayUnit?.abbreviation} en ${stockUnit?.abbreviation}.`
+                        : `Conversion automatique vers ${stockUnit?.abbreviation ?? 'unite stock'}.`}
+                    </p>
+                  </div>
+                )}
                 {item.product_type === 'produit_fini' && (
                   <p className="rounded-md bg-amber-50 p-3 text-xs font-semibold text-amber-800">
                     Produit fini vendu depuis une fiche technique. Les ingredients de la fiche seront sortis automatiquement du stock.

@@ -3,7 +3,9 @@ import { getStockQuantity } from './stock.api'
 import { createStockOutRows } from './stockOuts.api'
 import { getRecipe } from './recipes.api'
 import { calculateSaleTotals, salesPointLabels } from '../../lib/sales'
+import { formatUnit, getUnitConversionFactor } from '../../lib/unitConversions'
 import type { Sale, SaleFormValues, SalesStatsPayload, SaleStatsRow, SalesChannel, SalesPoint, SalesStatus, ServiceMode } from '../../lib/sales'
+import type { Unit } from '../../lib/catalog'
 
 type SalesFilters = {
   search?: string
@@ -31,7 +33,7 @@ export async function listSales(filters: SalesFilters = {}) {
 
   let query = supabase.schema('stock')
     .from('sales')
-    .select('*, events(id, name), creator:profiles!sales_created_by_fkey(id, full_name), sale_items(*, articles(id, name, unit_id, families(id, name), units(id, name, abbreviation)), recipes(id, name, code, final_price, total_cost))', { count: 'exact' })
+    .select('*, events(id, name), creator:profiles!sales_created_by_fkey(id, full_name), sale_items(*, articles(id, name, unit_id, families(id, name), units(id, name, abbreviation)), display_unit:units!sale_items_unit_display_id_fkey(id, name, abbreviation), stock_unit:units!sale_items_unit_stock_id_fkey(id, name, abbreviation), recipes(id, name, code, final_price, total_cost))', { count: 'exact' })
     .order('sale_date', { ascending: false })
     .range(from, to)
 
@@ -54,7 +56,7 @@ export async function listSales(filters: SalesFilters = {}) {
 export async function getSale(id: string) {
   const { data, error } = await supabase.schema('stock')
     .from('sales')
-    .select('*, events(id, name), creator:profiles!sales_created_by_fkey(id, full_name), canceller:profiles!sales_cancelled_by_fkey(id, full_name), sale_items(*, articles(id, name, unit_id, families(id, name), units(id, name, abbreviation)), recipes(id, name, code, final_price, total_cost)), sale_stock_outs(*, stock_outs(*, articles(id, name), units(id, name, abbreviation), locations(id, name))), sale_returns(*, stock_movements(id, movement_reference, quantity, unit_cost, total_cost), creator:profiles!sale_returns_created_by_fkey(id, full_name))')
+    .select('*, events(id, name), creator:profiles!sales_created_by_fkey(id, full_name), canceller:profiles!sales_cancelled_by_fkey(id, full_name), sale_items(*, articles(id, name, unit_id, families(id, name), units(id, name, abbreviation)), display_unit:units!sale_items_unit_display_id_fkey(id, name, abbreviation), stock_unit:units!sale_items_unit_stock_id_fkey(id, name, abbreviation), recipes(id, name, code, final_price, total_cost)), sale_stock_outs(*, stock_outs(*, articles(id, name), units(id, name, abbreviation), locations(id, name))), sale_returns(*, stock_movements(id, movement_reference, quantity, unit_cost, total_cost), creator:profiles!sale_returns_created_by_fkey(id, full_name))')
     .eq('id', id)
     .single()
   if (error) throw error
@@ -88,6 +90,9 @@ export async function createSale(values: SaleFormValues, profileId: string, role
   for (const item of values.items) {
     const billableQuantity = Math.max(0, Number(item.quantity) - Number(item.quantity_offered ?? 0))
     const lineLocationId = item.location_id || values.location_id
+    const rawConversion = item.product_type === 'produit_brut' && item.article_id
+      ? await resolveRawSaleConversion(item, billableQuantity)
+      : null
     const { data: saleItem, error: itemError } = await supabase.schema('stock')
       .from('sale_items')
       .insert({
@@ -96,6 +101,10 @@ export async function createSale(values: SaleFormValues, profileId: string, role
         product_type: item.product_type,
         quantity: item.quantity,
         quantity_offered: item.quantity_offered,
+        unit_display_id: rawConversion?.unitDisplayId ?? null,
+        unit_stock_id: rawConversion?.unitStockId ?? null,
+        quantity_stock: rawConversion?.quantityStock ?? null,
+        conversion_factor: rawConversion?.conversionFactor ?? null,
         unit_price: item.unit_price,
         discount: item.discount,
         offer_reason: cleanNullable(item.offer_reason),
@@ -131,6 +140,7 @@ export async function createSale(values: SaleFormValues, profileId: string, role
       continue
     }
     if (!item.article_id) throw new Error('Article obligatoire')
+    const converted = rawConversion ?? await resolveRawSaleConversion(item, billableQuantity)
     const stockOutIds = await createStockOutRows({
       event_id: values.event_id,
       out_date: values.sale_date.slice(0, 10),
@@ -139,10 +149,10 @@ export async function createSale(values: SaleFormValues, profileId: string, role
       comment: values.comment,
       items: [{
         article_id: item.article_id,
-        quantity: billableQuantity,
-        unit_id: await getArticleUnitId(item.article_id),
+        quantity: converted.quantityStock,
+        unit_id: converted.unitStockId,
         location_id: lineLocationId,
-        theoretical_quantity: billableQuantity,
+        theoretical_quantity: converted.quantityStock,
         recipe_id: '',
         is_additional: false,
         is_return: false,
@@ -353,10 +363,46 @@ function aggregateOfferStats(sales: Sale[]): SaleStatsRow[] {
   return Array.from(rows.values()).sort((a, b) => b.revenue - a.revenue)
 }
 
-async function getArticleUnitId(articleId: string) {
-  const { data, error } = await supabase.schema('stock').from('articles').select('unit_id').eq('id', articleId).single()
+async function resolveRawSaleConversion(item: SaleFormValues['items'][number], billableQuantity: number) {
+  if (!item.article_id) throw new Error('Article obligatoire')
+  const stockUnit = await getArticleStockUnit(item.article_id)
+  const displayUnitId = item.unit_display_id || stockUnit.id
+  const displayUnit = displayUnitId === stockUnit.id ? stockUnit : await getUnit(displayUnitId)
+  const automaticFactor = getUnitConversionFactor(displayUnit, stockUnit)
+  const conversionFactor = automaticFactor ?? Number(item.conversion_factor ?? 0)
+
+  if (!conversionFactor || conversionFactor <= 0) {
+    throw new Error(`Conversion impossible de ${formatUnit(displayUnit)} vers ${formatUnit(stockUnit)}. Veuillez saisir un facteur de conversion.`)
+  }
+
+  return {
+    unitDisplayId: displayUnit.id,
+    unitStockId: stockUnit.id,
+    conversionFactor,
+    quantityStock: billableQuantity * conversionFactor,
+  }
+}
+
+async function getArticleStockUnit(articleId: string) {
+  const { data, error } = await supabase.schema('stock')
+    .from('articles')
+    .select('units(id, name, abbreviation)')
+    .eq('id', articleId)
+    .single()
   if (error) throw error
-  return data.unit_id as string
+  const unit = Array.isArray(data.units) ? data.units[0] : data.units
+  if (!unit) throw new Error('Unite de stock introuvable pour cet article')
+  return unit as Pick<Unit, 'id' | 'name' | 'abbreviation'>
+}
+
+async function getUnit(unitId: string) {
+  const { data, error } = await supabase.schema('stock')
+    .from('units')
+    .select('id, name, abbreviation')
+    .eq('id', unitId)
+    .single()
+  if (error) throw error
+  return data as Pick<Unit, 'id' | 'name' | 'abbreviation'>
 }
 
 async function getAverageStockCost(articleId: string) {
@@ -385,8 +431,9 @@ async function validateSaleValues(values: SaleFormValues) {
     }
     if (!item.article_id?.trim()) throw new Error('Article obligatoire')
     const billableQuantity = Math.max(0, Number(item.quantity) - Number(item.quantity_offered ?? 0))
+    const converted = await resolveRawSaleConversion(item, billableQuantity)
     const available = await getStockQuantity(item.article_id, lineLocationId)
-    if (available < billableQuantity) throw new Error('Stock insuffisant pour cette vente')
+    if (available < converted.quantityStock) throw new Error('Stock insuffisant pour cette vente')
   }
 }
 

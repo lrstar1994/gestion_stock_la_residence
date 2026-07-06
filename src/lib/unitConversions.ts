@@ -26,6 +26,7 @@ export function normalizeUnitCode(unit?: Pick<Unit, 'name' | 'abbreviation'> | n
   if (raw === 'gramme') return 'g'
   if (raw === 'litre') return 'l'
   if (raw === 'millilitre') return 'ml'
+  if (raw === 'centilitre') return 'cl'
   if (raw === 'piece' || raw === 'pc') return 'piece'
   return raw
 }
@@ -39,6 +40,10 @@ export function getUnitConversionFactor(displayUnit?: Pick<Unit, 'name' | 'abbre
   if (from === 'g' && to === 'kg') return 0.001
   if (from === 'kg' && to === 'g') return 1000
   if (from === 'ml' && to === 'l') return 0.001
+  if (from === 'cl' && to === 'l') return 0.01
+  if (from === 'l' && to === 'cl') return 100
+  if (from === 'ml' && to === 'cl') return 0.1
+  if (from === 'cl' && to === 'ml') return 10
   if (from === 'l' && to === 'ml') return 1000
   return null
 }

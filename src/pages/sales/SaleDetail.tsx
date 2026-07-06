@@ -104,12 +104,12 @@ export function SaleDetail() {
       </section>
 
       <section className="surface overflow-hidden">
-        <div className="hidden grid-cols-[1fr_130px_100px_100px_100px_120px_120px_130px_120px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
-          <span>Article</span><span>Type</span><span>Quantite</span><span>Offert</span><span>Retour</span><span>Prix</span><span>Remise</span><span>Total</span><span>Action</span>
+        <div className="hidden grid-cols-[1fr_130px_130px_130px_100px_100px_120px_120px_130px_120px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
+          <span>Article</span><span>Type</span><span>Quantite vendue</span><span>Sortie stock</span><span>Offert</span><span>Retour</span><span>Prix</span><span>Remise</span><span>Total</span><span>Action</span>
         </div>
         <div className="divide-y divide-slate-200">
           {sale.sale_items?.map((item) => (
-            <div key={item.id} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_130px_100px_100px_100px_120px_120px_130px_120px] xl:items-center">
+            <div key={item.id} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_130px_130px_130px_100px_100px_120px_120px_130px_120px] xl:items-center">
               <span>
                 <span className="block font-semibold">{item.articles?.name || item.recipes?.name || '-'}</span>
                 <span className="text-xs text-slate-500">
@@ -120,7 +120,8 @@ export function SaleDetail() {
                 {item.offer_reason && <span className="mt-1 block text-xs font-semibold text-amber-700">Offre : {item.offer_reason}</span>}
               </span>
               <span>{productTypeLabels[item.product_type]}</span>
-              <span>{Number(item.quantity).toLocaleString('fr-FR')}</span>
+              <span>{Number(item.quantity).toLocaleString('fr-FR')} {item.display_unit?.abbreviation ?? (item.product_type === 'produit_brut' ? item.articles?.units?.abbreviation : 'portion')}</span>
+              <span>{item.product_type === 'produit_brut' ? `${Number(item.quantity_stock ?? item.quantity ?? 0).toLocaleString('fr-FR')} ${item.stock_unit?.abbreviation ?? item.articles?.units?.abbreviation ?? ''}` : '-'}</span>
               <span>{Number(item.quantity_offered ?? 0).toLocaleString('fr-FR')}</span>
               <span>{Number(item.returned_quantity ?? 0).toLocaleString('fr-FR')}</span>
               <span>{Number(item.unit_price).toLocaleString('fr-FR')} Ar</span>

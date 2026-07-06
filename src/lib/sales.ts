@@ -64,6 +64,10 @@ export type SaleItem = {
   product_type: ProductType
   quantity: number
   quantity_offered: number
+  unit_display_id?: string | null
+  unit_stock_id?: string | null
+  quantity_stock?: number | null
+  conversion_factor?: number | null
   unit_price: number
   total?: number
   discount: number
@@ -75,6 +79,8 @@ export type SaleItem = {
   returned_quantity?: number | null
   return_reason?: string | null
   articles?: Pick<Article, 'id' | 'name' | 'unit_id'> & { families?: Pick<Family, 'id' | 'name'>; units?: Pick<Unit, 'id' | 'name' | 'abbreviation'> }
+  display_unit?: Pick<Unit, 'id' | 'name' | 'abbreviation'>
+  stock_unit?: Pick<Unit, 'id' | 'name' | 'abbreviation'>
   recipes?: Pick<Recipe, 'id' | 'name' | 'code' | 'final_price' | 'total_cost'>
 }
 
@@ -159,6 +165,10 @@ export const saleItemSchema = z.object({
   product_type: z.enum(productTypes),
   quantity: z.number().min(0, 'La quantite ne peut pas etre negative'),
   quantity_offered: z.number().min(0).default(0),
+  unit_display_id: z.string().optional(),
+  unit_stock_id: z.string().optional(),
+  quantity_stock: z.number().min(0).optional(),
+  conversion_factor: z.number().positive().optional(),
   unit_price: z.number().positive('Le prix unitaire doit etre superieur a 0'),
   discount: z.number().min(0).default(0),
   location_id: z.string().optional(),
