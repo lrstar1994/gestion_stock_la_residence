@@ -135,7 +135,7 @@ export function ReceptionFormPage() {
       listReceivableCashPurchases(),
       listDefaultReceptionLocation(),
     ])
-    setArticles(articlesResult.articles)
+    setArticles([...articlesResult.articles].sort((left, right) => left.name.localeCompare(right.name, 'fr', { sensitivity: 'base' })))
     setSuppliers(loadedSuppliers)
     setLocations(loadedLocations)
     setUnits(loadedUnits)
