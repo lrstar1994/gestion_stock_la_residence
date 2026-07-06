@@ -47,7 +47,7 @@ export function PurchaseOrderFormPage() {
       listSuppliers(),
       listOrderablePurchaseGroups(),
     ])
-    setArticles(articlesResult.articles)
+    setArticles([...articlesResult.articles].sort((left, right) => left.name.localeCompare(right.name, 'fr', { sensitivity: 'base' })))
     setUnits(loadedUnits)
     setSuppliers(loadedSuppliers)
     setGroups(loadedGroups)
