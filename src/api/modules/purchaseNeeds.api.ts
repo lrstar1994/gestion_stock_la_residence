@@ -12,7 +12,7 @@ import type {
 
 type PurchaseNeedFilters = {
   search?: string
-  status?: NeedStatus | 'all'
+  status?: NeedStatus | 'all' | 'open'
   origin?: NeedOrigin | 'all'
   urgency?: NeedUrgency | 'all'
   familyId?: string
@@ -41,7 +41,8 @@ export async function listPurchaseNeedsGlobal(filters: PurchaseNeedFilters = {})
     .order('created_at', { ascending: false })
     .range(from, to)
 
-  if (filters.status && filters.status !== 'all') query = query.eq('status', filters.status)
+  if (filters.status === 'open' || !filters.status) query = query.in('status', ['a_faire', 'en_cours', 'valide'])
+  else if (filters.status !== 'all') query = query.eq('status', filters.status)
   if (filters.origin && filters.origin !== 'all') query = query.eq('origin', filters.origin)
   if (filters.urgency && filters.urgency !== 'all') query = query.eq('urgency', filters.urgency)
   if (filters.articleId) query = query.eq('article_id', filters.articleId)

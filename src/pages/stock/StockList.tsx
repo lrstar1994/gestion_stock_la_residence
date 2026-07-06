@@ -19,7 +19,7 @@ export function StockList() {
   const [search, setSearch] = useState('')
   const [familyId, setFamilyId] = useState('')
   const [locationId, setLocationId] = useState('')
-  const [status, setStatus] = useState<'all' | 'low' | 'normal' | 'out'>('all')
+  const [status, setStatus] = useState<'all' | 'low' | 'minimum' | 'normal' | 'out'>('all')
   const [unconfirmedInitial, setUnconfirmedInitial] = useState(0)
   const canManage = canManageStock(profile?.role)
   const filters = useMemo(() => ({ search, familyId, locationId, status }), [familyId, locationId, search, status])
@@ -53,10 +53,11 @@ export function StockList() {
   const dashboard = {
     total: rows.length,
     low: rows.filter((row) => stockStatus(row) === 'bas').length,
+    minimum: rows.filter((row) => stockStatus(row) === 'minimum').length,
     out: rows.filter((row) => stockStatus(row) === 'rupture').length,
     value: rows.reduce((sum, row) => sum + Number(row.total_quantity ?? 0) * Number(row.average_price ?? 0), 0),
   }
-  const alerts = rows.filter((row) => ['bas', 'rupture'].includes(stockStatus(row)))
+  const alerts = rows.filter((row) => ['minimum', 'bas', 'rupture'].includes(stockStatus(row)))
 
   return (
     <div className="space-y-6">
@@ -73,6 +74,7 @@ export function StockList() {
 
       <section className="grid gap-4 md:grid-cols-4">
         <Metric label="Articles suivis" value={String(dashboard.total)} />
+        <Metric label="Minimum atteint" value={String(dashboard.minimum)} />
         <Metric label="Stock bas" value={String(dashboard.low)} />
         <Metric label="Ruptures" value={String(dashboard.out)} />
         <Metric label="Valeur estimee" value={`${dashboard.value.toLocaleString('fr-FR')} Ar`} />
@@ -88,7 +90,7 @@ export function StockList() {
         <section className="surface overflow-hidden border border-yellow-200">
           <div className="border-b border-yellow-100 bg-yellow-50 px-5 py-4">
             <h2 className="font-bold text-yellow-900">Alertes stock minimum</h2>
-            <p className="mt-1 text-sm text-yellow-800">Articles en stock bas ou en rupture.</p>
+            <p className="mt-1 text-sm text-yellow-800">Articles au seuil minimum, en stock bas ou en rupture.</p>
           </div>
           <div className="divide-y divide-yellow-100">
             {alerts.slice(0, 8).map((row) => (
@@ -107,7 +109,7 @@ export function StockList() {
         <label className="relative block"><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} className="input pl-9" placeholder="Rechercher article" /></label>
         <select value={familyId} onChange={(event) => setFamilyId(event.target.value)} className="input"><option value="">Toutes familles</option>{families.map((family) => <option key={family.id} value={family.id}>{family.name}</option>)}</select>
         <select value={locationId} onChange={(event) => setLocationId(event.target.value)} className="input"><option value="">Toutes localisations</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select>
-        <select value={status} onChange={(event) => setStatus(event.target.value as typeof status)} className="input"><option value="all">Tous statuts</option><option value="normal">Stock normal</option><option value="low">Stock bas</option><option value="out">Rupture</option></select>
+        <select value={status} onChange={(event) => setStatus(event.target.value as typeof status)} className="input"><option value="all">Tous statuts</option><option value="normal">Stock normal</option><option value="minimum">Stock minimum atteint</option><option value="low">Stock bas</option><option value="out">Rupture</option></select>
       </section>
 
       <section className="surface overflow-hidden">
@@ -138,6 +140,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function Badge({ status }: { status: string }) {
-  const color = status === 'rupture' ? 'bg-red-50 text-red-800' : status === 'bas' ? 'bg-yellow-50 text-yellow-800' : 'bg-emerald-50 text-emerald-800'
-  return <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${color}`}>{status === 'rupture' ? 'Rupture' : status === 'bas' ? 'Stock bas' : 'Normal'}</span>
+  const color = status === 'rupture' ? 'bg-red-50 text-red-800' : status === 'bas' ? 'bg-orange-50 text-orange-800' : status === 'minimum' ? 'bg-yellow-50 text-yellow-800' : 'bg-emerald-50 text-emerald-800'
+  const label = status === 'rupture' ? 'Rupture' : status === 'bas' ? 'Stock bas' : status === 'minimum' ? 'Stock minimum atteint' : 'Normal'
+  return <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${color}`}>{label}</span>
 }

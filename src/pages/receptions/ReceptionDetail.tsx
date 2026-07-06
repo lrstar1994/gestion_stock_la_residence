@@ -8,6 +8,9 @@ import { exportReceptionToPdf } from '../../lib/receptionExports'
 import { anomalyTypeLabels, canCreateReceptions, canValidateReceptionWithAnomalies, canValidateReceptions, receptionStatusLabels } from '../../lib/receptions'
 import type { Reception } from '../../lib/receptions'
 
+const receptionComparisonGrid =
+  'grid min-w-[1400px] grid-cols-[1.4fr_120px_120px_120px_120px_130px_130px_130px_140px_140px_120px] items-center gap-4 px-5'
+
 export function ReceptionDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -156,7 +159,7 @@ export function ReceptionDetail() {
           <h2 className="mt-1 text-lg font-bold text-slate-950">Prevu vs reel</h2>
         </div>
         <div className="overflow-x-auto">
-          <div className="grid min-w-[1320px] grid-cols-[1.3fr_120px_120px_120px_120px_120px_120px_120px_130px_130px_120px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+          <div className={`${receptionComparisonGrid} border-b border-slate-200 bg-slate-50 py-3 text-xs font-bold uppercase tracking-wide text-slate-500`}>
             <span>Article</span>
             <span>Prevu</span>
             <span>Livre</span>
@@ -182,8 +185,8 @@ export function ReceptionDetail() {
               const isConform = quantityDiff === 0 && priceDiff === 0 && item.quality === 'conforme' && !item.has_anomaly && (item.reception_anomalies?.length ?? 0) === 0
 
               return (
-                <div key={item.id} className="space-y-3 px-5 py-4">
-                  <div className="grid min-w-[1320px] grid-cols-[1.3fr_120px_120px_120px_120px_120px_120px_120px_130px_130px_120px] items-center gap-4 text-sm">
+                <div key={item.id} className="space-y-3 py-4">
+                  <div className={`${receptionComparisonGrid} text-sm`}>
                     <span><span className="block font-semibold text-slate-950">{item.articles?.name}</span><span className="text-xs text-slate-500">{item.articles?.families?.name || ''}</span></span>
                     <span>{formatQuantity(expectedQuantity, item.units?.abbreviation)}</span>
                     <span>{formatQuantity(item.quantity_delivered, item.units?.abbreviation)}</span>
@@ -202,9 +205,9 @@ export function ReceptionDetail() {
                       {isConform ? 'Conforme' : 'Ecart'}
                     </span>
                   </div>
-              {item.quality_comment && <p className="text-sm text-slate-600">Qualite : {item.quality_comment}</p>}
+              {item.quality_comment && <p className="min-w-[1400px] px-5 text-sm text-slate-600">Qualite : {item.quality_comment}</p>}
               {(item.reception_anomalies?.length ?? 0) > 0 && (
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid min-w-[1400px] gap-3 px-5 md:grid-cols-2">
                   {item.reception_anomalies?.map((anomaly) => (
                     <div key={anomaly.id} className="rounded-md border border-amber-200 bg-amber-50 p-3">
                       <p className="font-semibold text-amber-900">{anomalyTypeLabels[anomaly.anomaly_type]}</p>
@@ -220,7 +223,7 @@ export function ReceptionDetail() {
                 </div>
               )
             })}
-            {(reception.reception_items?.length ?? 0) === 0 && <p className="min-w-[1320px] p-5 text-sm text-slate-600">Aucun article receptionne.</p>}
+            {(reception.reception_items?.length ?? 0) === 0 && <p className="min-w-[1400px] p-5 text-sm text-slate-600">Aucun article receptionne.</p>}
           </div>
         </div>
       </section>

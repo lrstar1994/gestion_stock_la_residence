@@ -34,7 +34,7 @@ export function PurchaseNeedsList() {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [groupSupplierId, setGroupSupplierId] = useState('')
   const [search, setSearch] = useState('')
-  const [status, setStatus] = useState<NeedStatus | 'all'>('all')
+  const [status, setStatus] = useState<NeedStatus | 'all' | 'open'>('open')
   const [origin, setOrigin] = useState<NeedOrigin | 'all'>('all')
   const [urgency, setUrgency] = useState<NeedUrgency | 'all'>('all')
   const [familyId, setFamilyId] = useState('')
@@ -148,7 +148,7 @@ export function PurchaseNeedsList() {
 
       <section className="surface grid gap-3 p-4 xl:grid-cols-[1fr_150px_170px_150px_180px]">
         <input value={search} onChange={(event) => resetPage(() => setSearch(event.target.value))} className="input" placeholder="Rechercher article ou commentaire" />
-        <select value={status} onChange={(event) => resetPage(() => setStatus(event.target.value as NeedStatus | 'all'))} className="input"><option value="all">Tous statuts</option>{needStatuses.map((item) => <option key={item} value={item}>{needStatusLabels[item]}</option>)}</select>
+        <select value={status} onChange={(event) => resetPage(() => setStatus(event.target.value as NeedStatus | 'all' | 'open'))} className="input"><option value="open">A traiter</option><option value="all">Tous statuts</option>{needStatuses.map((item) => <option key={item} value={item}>{needStatusLabels[item]}</option>)}</select>
         <select value={origin} onChange={(event) => resetPage(() => setOrigin(event.target.value as NeedOrigin | 'all'))} className="input"><option value="all">Toutes origines</option>{needOrigins.map((item) => <option key={item} value={item}>{needOriginLabels[item]}</option>)}</select>
         <select value={urgency} onChange={(event) => resetPage(() => setUrgency(event.target.value as NeedUrgency | 'all'))} className="input"><option value="all">Toutes urgences</option>{needUrgencies.map((item) => <option key={item} value={item}>{needUrgencyLabels[item]}</option>)}</select>
         <select value={familyId} onChange={(event) => resetPage(() => setFamilyId(event.target.value))} className="input"><option value="">Toutes familles</option>{families.map((family) => <option key={family.id} value={family.id}>{family.name}</option>)}</select>

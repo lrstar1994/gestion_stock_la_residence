@@ -6,7 +6,7 @@ type StockFilters = {
   search?: string
   familyId?: string
   locationId?: string
-  status?: 'all' | 'low' | 'normal' | 'out'
+  status?: 'all' | 'low' | 'minimum' | 'normal' | 'out'
 }
 
 type MovementFilters = {
@@ -83,7 +83,8 @@ export async function listStock(filters: StockFilters = {}) {
       const quantity = Number(row.total_quantity ?? 0)
       const minStock = Number(row.articles?.min_stock ?? 0)
       if (filters.status === 'out') return quantity <= 0
-      if (filters.status === 'low') return quantity > 0 && minStock > 0 && quantity <= minStock
+      if (filters.status === 'low') return quantity > 0 && minStock > 0 && quantity < minStock
+      if (filters.status === 'minimum') return minStock > 0 && quantity === minStock
       return quantity > minStock
     })
   }
@@ -388,6 +389,7 @@ export function stockStatus(row: StockRow) {
   const quantity = Number(row.total_quantity ?? 0)
   const min = Number(row.articles?.min_stock ?? 0)
   if (quantity <= 0) return 'rupture'
-  if (min > 0 && quantity <= min) return 'bas'
+  if (min > 0 && quantity < min) return 'bas'
+  if (min > 0 && quantity === min) return 'minimum'
   return 'normal'
 }

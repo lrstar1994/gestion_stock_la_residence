@@ -118,6 +118,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function StockBadge({ status }: { status: string }) {
-  const color = status === 'rupture' ? 'bg-red-50 text-red-800' : status === 'bas' ? 'bg-yellow-50 text-yellow-800' : 'bg-emerald-50 text-emerald-800'
-  return <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${color}`}>{status === 'rupture' ? 'Rupture' : status === 'bas' ? 'Stock bas' : 'Normal'}</span>
+  const color = status === 'rupture' ? 'bg-red-50 text-red-800' : status === 'bas' ? 'bg-orange-50 text-orange-800' : status === 'minimum' ? 'bg-yellow-50 text-yellow-800' : 'bg-emerald-50 text-emerald-800'
+  const label = status === 'rupture' ? 'Rupture' : status === 'bas' ? 'Stock bas' : status === 'minimum' ? 'Stock minimum atteint' : 'Normal'
+  return <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${color}`}>{label}</span>
 }
