@@ -68,6 +68,7 @@ export type SaleItem = {
   total?: number
   discount: number
   total_after_discount?: number
+  location_id?: string
   offer_reason?: string | null
   comment?: string | null
   recipe_id?: string | null
@@ -160,6 +161,7 @@ export const saleItemSchema = z.object({
   quantity_offered: z.number().min(0).default(0),
   unit_price: z.number().positive('Le prix unitaire doit etre superieur a 0'),
   discount: z.number().min(0).default(0),
+  location_id: z.string().optional(),
   offer_reason: z.string().optional(),
   comment: z.string().optional(),
   recipe_id: z.string().optional(),
@@ -185,6 +187,9 @@ export const saleFormSchema = z.object({
     }
     if (item.product_type === 'produit_brut' && !item.article_id?.trim()) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ['items', index, 'article_id'], message: 'Article obligatoire' })
+    }
+    if (!item.location_id?.trim()) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ['items', index, 'location_id'], message: 'Localisation obligatoire' })
     }
     if (item.product_type === 'produit_fini' && !item.recipe_id?.trim()) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ['items', index, 'recipe_id'], message: 'Fiche technique obligatoire' })

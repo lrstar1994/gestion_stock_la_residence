@@ -87,6 +87,7 @@ export async function createSale(values: SaleFormValues, profileId: string, role
 
   for (const item of values.items) {
     const billableQuantity = Math.max(0, Number(item.quantity) - Number(item.quantity_offered ?? 0))
+    const lineLocationId = item.location_id || values.location_id
     const { data: saleItem, error: itemError } = await supabase.schema('stock')
       .from('sale_items')
       .insert({
@@ -108,7 +109,7 @@ export async function createSale(values: SaleFormValues, profileId: string, role
     if (billableQuantity <= 0) continue
     if (item.product_type === 'produit_fini') {
       if (!item.recipe_id) throw new Error('Fiche technique obligatoire')
-      const recipeItems = await buildRecipeStockOutItems(item.recipe_id, billableQuantity, values.location_id)
+      const recipeItems = await buildRecipeStockOutItems(item.recipe_id, billableQuantity, lineLocationId)
       const stockOutIds = await createStockOutRows({
         event_id: values.event_id,
         out_date: values.sale_date.slice(0, 10),
@@ -139,7 +140,7 @@ export async function createSale(values: SaleFormValues, profileId: string, role
         article_id: item.article_id,
         quantity: billableQuantity,
         unit_id: await getArticleUnitId(item.article_id),
-        location_id: values.location_id,
+        location_id: lineLocationId,
         theoretical_quantity: billableQuantity,
         recipe_id: '',
         is_additional: false,
@@ -369,19 +370,21 @@ async function validateSaleValues(values: SaleFormValues) {
     if (item.unit_price <= 0) throw new Error('Le prix unitaire doit etre superieur a 0')
     if (item.quantity_offered > item.quantity) throw new Error('La quantite offerte ne peut pas depasser la quantite vendue')
     if (item.quantity_offered > 0 && !item.offer_reason?.trim()) throw new Error('Le motif est obligatoire pour une offre')
+    const lineLocationId = item.location_id || values.location_id
+    if (!lineLocationId) throw new Error('Localisation obligatoire pour la sortie de stock')
     if (item.product_type === 'produit_fini') {
       if (!item.recipe_id?.trim()) throw new Error('Fiche technique obligatoire')
       const billableQuantity = Math.max(0, Number(item.quantity) - Number(item.quantity_offered ?? 0))
-      const recipeItems = await buildRecipeStockOutItems(item.recipe_id, billableQuantity, values.location_id)
+      const recipeItems = await buildRecipeStockOutItems(item.recipe_id, billableQuantity, lineLocationId)
       for (const ingredient of recipeItems) {
-        const available = await getStockQuantity(ingredient.article_id, values.location_id)
+        const available = await getStockQuantity(ingredient.article_id, lineLocationId)
         if (available < ingredient.quantity) throw new Error('Stock insuffisant pour cette vente')
       }
       continue
     }
     if (!item.article_id?.trim()) throw new Error('Article obligatoire')
     const billableQuantity = Math.max(0, Number(item.quantity) - Number(item.quantity_offered ?? 0))
-    const available = await getStockQuantity(item.article_id, values.location_id)
+    const available = await getStockQuantity(item.article_id, lineLocationId)
     if (available < billableQuantity) throw new Error('Stock insuffisant pour cette vente')
   }
 }

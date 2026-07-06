@@ -59,13 +59,18 @@ export function SaleFormPage() {
       getSalePriceSuggestions(),
     ])
       .then(([articleResult, loadedLocations, eventResult, recipeResult, suggestions]) => {
+        const defaultLocationId = loadedLocations[0]?.id ?? ''
         setArticles(articleResult.articles)
         setLocations(loadedLocations)
         setEvents(eventResult.events)
         setRecipes(recipeResult.recipes)
         setRawPrices(suggestions.rawPrices)
-        setValues((current) => ({ ...current, location_id: loadedLocations[0]?.id ?? '' }))
-        if (loadedLocations[0]?.id) getUnconfirmedInitialInventoryCount(loadedLocations[0].id).then(setUnconfirmedInitial).catch(() => undefined)
+        setValues((current) => ({
+          ...current,
+          location_id: defaultLocationId,
+          items: current.items.map((item) => ({ ...item, location_id: item.location_id || defaultLocationId })),
+        }))
+        if (defaultLocationId) getUnconfirmedInitialInventoryCount(defaultLocationId).then(setUnconfirmedInitial).catch(() => undefined)
       })
       .catch(() => toast.error('Impossible de charger le formulaire.'))
   }, [])
@@ -81,6 +86,7 @@ export function SaleFormPage() {
         quantity_offered: 0,
         unit_price: 0,
         discount: 0,
+        location_id: current.location_id,
         offer_reason: '',
         comment: '',
         recipe_id: '',
@@ -161,7 +167,7 @@ export function SaleFormPage() {
         <label className="block"><span className="field-label">Canal</span><select value={values.channel} onChange={(event) => setValues((current) => ({ ...current, channel: event.target.value as typeof values.channel }))} className="input mt-2">{salesChannels.map((item) => <option key={item} value={item}>{salesChannelLabels[item]}</option>)}</select></label>
         <label className="block"><span className="field-label">Mode de service</span><select value={values.service_mode} onChange={(event) => setValues((current) => ({ ...current, service_mode: event.target.value as typeof values.service_mode }))} className="input mt-2">{serviceModes.map((item) => <option key={item} value={item}>{serviceModeLabels[item]}</option>)}</select></label>
         <label className="block"><span className="field-label">Point de vente</span><select value={values.sales_point} onChange={(event) => setValues((current) => ({ ...current, sales_point: event.target.value as typeof values.sales_point }))} className="input mt-2">{salesPoints.map((item) => <option key={item} value={item}>{salesPointLabels[item]}</option>)}</select></label>
-        <label className="block"><span className="field-label">Localisation stock</span><select value={values.location_id} onChange={(event) => changeLocation(event.target.value)} className="input mt-2"><option value="">Selectionner</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+        <label className="block"><span className="field-label">Localisation par defaut</span><select value={values.location_id} onChange={(event) => changeLocation(event.target.value)} className="input mt-2"><option value="">Selectionner</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
         <label className="block"><span className="field-label">Evenement lie</span><select value={values.event_id} onChange={(event) => setValues((current) => ({ ...current, event_id: event.target.value }))} className="input mt-2"><option value="">Aucun</option>{events.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label className="block md:col-span-3"><span className="field-label">Client</span><input value={values.client_name} onChange={(event) => setValues((current) => ({ ...current, client_name: event.target.value }))} className="input mt-2" /></label>
         <label className="block md:col-span-3"><span className="field-label">Commentaire</span><textarea value={values.comment} onChange={(event) => setValues((current) => ({ ...current, comment: event.target.value }))} className="input mt-2 min-h-20" /></label>
@@ -188,8 +194,15 @@ export function SaleFormPage() {
             const lineTotal = Math.max(0, (Number(item.quantity) - Number(item.quantity_offered ?? 0)) * Number(item.unit_price) - Number(item.discount ?? 0))
             return (
               <div key={`${item.article_id || item.recipe_id || 'line'}-${index}`} className="space-y-3 px-5 py-4">
-                <div className="grid gap-3 xl:grid-cols-[150px_1fr_100px_100px_130px_120px_120px_44px] xl:items-end">
+                <div className="grid gap-3 xl:grid-cols-[140px_180px_1fr_90px_90px_120px_110px_110px_44px] xl:items-end">
                   <label><span className="field-label">Type</span><select value={item.product_type} onChange={(event) => changeProductType(index, event.target.value as ProductType)} className="input mt-2">{productTypes.map((type) => <option key={type} value={type}>{productTypeLabels[type]}</option>)}</select></label>
+                  <label>
+                    <span className="field-label">Localisation</span>
+                    <select value={item.location_id || values.location_id} onChange={(event) => updateItem(index, { location_id: event.target.value })} className="input mt-2">
+                      <option value="">Selectionner</option>
+                      {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
+                    </select>
+                  </label>
                   {item.product_type === 'produit_brut' ? (
                     <label>
                       <span className="field-label">Article a vendre sans transformation</span>
