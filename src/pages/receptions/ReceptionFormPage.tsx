@@ -27,6 +27,8 @@ const emptyForm: ReceptionFormValues = {
   items: [],
 }
 
+type ReceptionMode = 'order' | 'cash' | 'manual'
+
 function normalizeName(value?: string | null) {
   return value?.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() ?? ''
 }
@@ -38,6 +40,7 @@ export function ReceptionFormPage() {
   const { profile } = useAuth()
   const isEdit = Boolean(id)
   const [values, setValues] = useState<ReceptionFormValues>(emptyForm)
+  const [receptionMode, setReceptionMode] = useState<ReceptionMode>(searchParams.get('orderId') ? 'order' : 'manual')
   const [articles, setArticles] = useState<Article[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [locations, setLocations] = useState<Location[]>([])
@@ -50,6 +53,7 @@ export function ReceptionFormPage() {
       ...current,
       supplier_id: order.supplier_id,
       purchase_order_id: order.id,
+      cash_purchase_id: '',
       location_id: current.location_id || fallbackLocationId,
       items: order.purchase_order_items?.map((item) => {
         const remaining = Math.max(0, Number(item.quantity_ordered ?? 0) - Number(item.quantity_received ?? 0))
@@ -97,6 +101,16 @@ export function ReceptionFormPage() {
       })) ?? [],
     }))
   }, [suppliers])
+
+  const changeReceptionMode = (mode: ReceptionMode) => {
+    setReceptionMode(mode)
+    setValues((current) => ({
+      ...current,
+      purchase_order_id: '',
+      cash_purchase_id: '',
+      items: [],
+    }))
+  }
 
   const load = useCallback(async () => {
     const [articlesResult, loadedSuppliers, loadedLocations, loadedOrders, loadedCashPurchases, defaultLocation] = await Promise.all([
@@ -147,7 +161,10 @@ export function ReceptionFormPage() {
       const orderId = searchParams.get('orderId')
       if (orderId) {
         const order = loadedOrders.find((item) => item.id === orderId)
-        if (order) selectOrder(order, defaultLocation?.id ?? loadedLocations[0]?.id ?? '')
+        if (order) {
+          setReceptionMode('order')
+          selectOrder(order, defaultLocation?.id ?? loadedLocations[0]?.id ?? '')
+        }
       }
     }
   }, [id, searchParams, selectOrder])
@@ -234,9 +251,50 @@ export function ReceptionFormPage() {
       </header>
 
       {!isEdit && (
-        <section className="surface grid gap-4 p-5 md:grid-cols-2">
-          <label className="block"><span className="field-label">Depuis une commande</span><select value={values.purchase_order_id} onChange={(event) => { const order = orders.find((item) => item.id === event.target.value); if (order) selectOrder(order); else setValues((current) => ({ ...current, purchase_order_id: '', items: [] })) }} className="input mt-2"><option value="">Reception sans commande</option>{orders.map((order) => <option key={order.id} value={order.id}>{order.reference} - {order.suppliers?.name}</option>)}</select></label>
-          <label className="block"><span className="field-label">Depuis un achat en especes</span><select value={values.cash_purchase_id} onChange={(event) => { const cashPurchase = cashPurchases.find((item) => item.id === event.target.value); if (cashPurchase) selectCashPurchase(cashPurchase, values.location_id); else setValues((current) => ({ ...current, cash_purchase_id: '', items: [] })) }} className="input mt-2"><option value="">Aucun achat en especes</option>{cashPurchases.map((purchase) => <option key={purchase.id} value={purchase.id}>{purchase.reference} - {purchase.reason}</option>)}</select></label>
+        <section className="surface space-y-4 p-5">
+          <div>
+            <p className="field-label">Mode de reception</p>
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <button type="button" onClick={() => changeReceptionMode('order')} className={`rounded-md border px-4 py-3 text-left text-sm font-semibold transition ${receptionMode === 'order' ? 'border-[#1E3A8A] bg-blue-50 text-[#1E3A8A]' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>
+                Depuis une commande fournisseur
+                <span className="mt-1 block text-xs font-normal text-slate-500">Pour receptionner une commande envoyee.</span>
+              </button>
+              <button type="button" onClick={() => changeReceptionMode('cash')} className={`rounded-md border px-4 py-3 text-left text-sm font-semibold transition ${receptionMode === 'cash' ? 'border-[#1E3A8A] bg-blue-50 text-[#1E3A8A]' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>
+                Depuis un achat en especes
+                <span className="mt-1 block text-xs font-normal text-slate-500">Pour entrer en stock un achat cash cloture.</span>
+              </button>
+              <button type="button" onClick={() => changeReceptionMode('manual')} className={`rounded-md border px-4 py-3 text-left text-sm font-semibold transition ${receptionMode === 'manual' ? 'border-[#1E3A8A] bg-blue-50 text-[#1E3A8A]' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>
+                Reception sans commande
+                <span className="mt-1 block text-xs font-normal text-slate-500">Pour une reception exceptionnelle saisie manuellement.</span>
+              </button>
+            </div>
+          </div>
+
+          {receptionMode === 'order' && (
+            <label className="block">
+              <span className="field-label">Commande fournisseur</span>
+              <select value={values.purchase_order_id} onChange={(event) => { const order = orders.find((item) => item.id === event.target.value); if (order) selectOrder(order); else setValues((current) => ({ ...current, purchase_order_id: '', items: [] })) }} className="input mt-2">
+                <option value="">Selectionner une commande</option>
+                {orders.map((order) => <option key={order.id} value={order.id}>{order.reference} - {order.suppliers?.name}</option>)}
+              </select>
+            </label>
+          )}
+
+          {receptionMode === 'cash' && (
+            <label className="block">
+              <span className="field-label">Achat en especes</span>
+              <select value={values.cash_purchase_id} onChange={(event) => { const cashPurchase = cashPurchases.find((item) => item.id === event.target.value); if (cashPurchase) selectCashPurchase(cashPurchase, values.location_id); else setValues((current) => ({ ...current, cash_purchase_id: '', items: [] })) }} className="input mt-2">
+                <option value="">Selectionner un achat en especes</option>
+                {cashPurchases.map((purchase) => <option key={purchase.id} value={purchase.id}>{purchase.reference} - {purchase.reason}</option>)}
+              </select>
+            </label>
+          )}
+
+          {receptionMode === 'manual' && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              Reception sans commande : utilisez ce mode uniquement pour une reception exceptionnelle non liee a une commande fournisseur ou a un achat en especes. Les articles, quantites et prix doivent etre saisis manuellement.
+            </div>
+          )}
         </section>
       )}
 
@@ -250,22 +308,40 @@ export function ReceptionFormPage() {
       </section>
 
       <section className="surface overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4"><h2 className="text-lg font-bold">Articles recus</h2><button type="button" onClick={addItem} className="btn-secondary"><Plus className="mr-2 h-4 w-4" /> Ajouter</button></div>
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <h2 className="text-lg font-bold">Articles recus</h2>
+          {receptionMode === 'manual' && (
+            <button type="button" onClick={addItem} className="btn-secondary"><Plus className="mr-2 h-4 w-4" /> Ajouter</button>
+          )}
+        </div>
         <div className="divide-y divide-slate-200">
           {values.items.map((item, index) => {
-            const selectedArticle = articles.find((article) => article.id === item.article_id)
             const refused = Math.max(0, Number(item.quantity_delivered) - Number(item.quantity_accepted))
+            const acceptedTotal = Number(item.quantity_accepted ?? 0) * Number(item.unit_price_real ?? 0)
             return (
               <div key={`${item.article_id}-${index}`} className="space-y-4 px-5 py-4">
-                <div className="grid gap-3 xl:grid-cols-[1fr_90px_90px_90px_90px_110px_130px_44px] xl:items-end">
-                  <label className="block"><span className="field-label">Article</span><select value={item.article_id} onChange={(event) => changeArticle(index, event.target.value)} className="input mt-2"><option value="">Article</option>{articles.map((article) => <option key={article.id} value={article.id}>{article.name}</option>)}</select></label>
-                  <Info label="Cmd" value={Number(item.quantity_ordered).toLocaleString('fr-FR')} />
-                  <label className="block"><span className="field-label">Livre</span><input type="number" value={item.quantity_delivered} onChange={(event) => updateItem(index, { quantity_delivered: Number(event.target.value) })} className="input mt-2" /></label>
-                  <label className="block"><span className="field-label">Accepte</span><input type="number" value={item.quantity_accepted} onChange={(event) => updateItem(index, { quantity_accepted: Number(event.target.value) })} className="input mt-2" /></label>
-                  <Info label="Refuse" value={refused.toLocaleString('fr-FR')} />
-                  <label className="block"><span className="field-label">Unite</span><select value={item.unit_id} onChange={(event) => updateItem(index, { unit_id: event.target.value })} className="input mt-2"><option value={selectedArticle?.unit_id ?? item.unit_id}>{selectedArticle?.units?.abbreviation ?? 'Unite'}</option></select></label>
-                  <label className="block"><span className="field-label">Prix reel</span><input type="number" value={item.unit_price_real} onChange={(event) => updateItem(index, { unit_price_real: Number(event.target.value) })} className="input mt-2" /></label>
-                  <button type="button" onClick={() => removeItem(index)} className="btn-secondary text-red-700"><Trash2 className="h-4 w-4" /></button>
+                <div className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-4">
+                  <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+                    <label className="block">
+                      <span className="field-label">Article</span>
+                      <select value={item.article_id} onChange={(event) => changeArticle(index, event.target.value)} className="input mt-2">
+                        <option value="">Article</option>
+                        {articles.map((article) => <option key={article.id} value={article.id}>{article.name}</option>)}
+                      </select>
+                    </label>
+                  {receptionMode === 'manual' && (
+                    <button type="button" onClick={() => removeItem(index)} className="btn-secondary text-red-700"><Trash2 className="h-4 w-4" /></button>
+                  )}
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-[100px_120px_120px_100px_130px_130px_130px] xl:items-end">
+                    <Info label="Commande" value={Number(item.quantity_ordered).toLocaleString('fr-FR')} />
+                    <label className="block"><span className="field-label">Livre</span><input type="number" value={item.quantity_delivered} onChange={(event) => updateItem(index, { quantity_delivered: Number(event.target.value) })} className="input mt-2" /></label>
+                    <label className="block"><span className="field-label">Accepte</span><input type="number" value={item.quantity_accepted} onChange={(event) => updateItem(index, { quantity_accepted: Number(event.target.value) })} className="input mt-2" /></label>
+                    <Info label="Refuse" value={refused.toLocaleString('fr-FR')} />
+                    <Info label="Prix prevu" value={`${Number(item.unit_price_planned ?? 0).toLocaleString('fr-FR')} Ar`} />
+                    <label className="block"><span className="field-label">Prix reel</span><input type="number" value={item.unit_price_real} onChange={(event) => updateItem(index, { unit_price_real: Number(event.target.value) })} className="input mt-2" /></label>
+                    <Info label="Total accepte" value={`${acceptedTotal.toLocaleString('fr-FR')} Ar`} />
+                  </div>
                 </div>
                 <div className="grid gap-3 md:grid-cols-[180px_1fr_auto]">
                   <select value={item.quality} onChange={(event) => updateItem(index, { quality: event.target.value as typeof item.quality, has_anomaly: event.target.value !== 'conforme' || item.has_anomaly })} className="input">{qualityStatuses.map((quality) => <option key={quality} value={quality}>{qualityStatusLabels[quality]}</option>)}</select>
