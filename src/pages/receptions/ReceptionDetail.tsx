@@ -27,8 +27,8 @@ export function ReceptionDetail() {
     if (!id) return
     try {
       setReception(await getReception(id))
-    } catch {
-      toast.error('Reception introuvable')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Reception introuvable')
       navigate('/receptions')
     }
   }, [id, navigate])

@@ -38,7 +38,7 @@ export function CashPurchaseFormPage() {
       listPurchaseNeedsGlobal({ status: 'valide', pageSize: 1000 }),
     ])
       .then(([articleResult, loadedUnits, needsResult]) => {
-        setArticles(articleResult.articles)
+        setArticles([...articleResult.articles].sort((left, right) => left.name.localeCompare(right.name, 'fr', { sensitivity: 'base' })))
         setUnits(loadedUnits)
         setNeeds(needsResult.needs)
       })

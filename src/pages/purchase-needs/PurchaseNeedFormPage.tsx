@@ -37,7 +37,7 @@ export function PurchaseNeedFormPage() {
   useEffect(() => {
     Promise.all([listArticles({ status: 'active', pageSize: 1000 }), listSuppliers(), listUnits()])
       .then(([articleResult, loadedSuppliers, loadedUnits]) => {
-        setArticles(articleResult.articles)
+        setArticles([...articleResult.articles].sort((left, right) => left.name.localeCompare(right.name, 'fr', { sensitivity: 'base' })))
         setSuppliers(loadedSuppliers)
         setUnits(loadedUnits)
       })
