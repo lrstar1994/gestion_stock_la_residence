@@ -60,7 +60,7 @@ export const salesStatusLabels: Record<SalesStatus, string> = {
 export type SaleItem = {
   id?: string
   sale_id?: string
-  article_id: string
+  article_id?: string | null
   product_type: ProductType
   quantity: number
   quantity_offered: number
@@ -154,7 +154,7 @@ export type SalesStatsPayload = {
 }
 
 export const saleItemSchema = z.object({
-  article_id: z.string().min(1, 'Article obligatoire'),
+  article_id: z.string().optional(),
   product_type: z.enum(productTypes),
   quantity: z.number().min(0, 'La quantite ne peut pas etre negative'),
   quantity_offered: z.number().min(0).default(0),
@@ -182,6 +182,12 @@ export const saleFormSchema = z.object({
     }
     if (item.quantity_offered > 0 && !item.offer_reason?.trim()) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ['items', index, 'offer_reason'], message: 'Le motif est obligatoire pour une offre' })
+    }
+    if (item.product_type === 'produit_brut' && !item.article_id?.trim()) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ['items', index, 'article_id'], message: 'Article obligatoire' })
+    }
+    if (item.product_type === 'produit_fini' && !item.recipe_id?.trim()) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ['items', index, 'recipe_id'], message: 'Fiche technique obligatoire' })
     }
   })
 })

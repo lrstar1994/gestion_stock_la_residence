@@ -100,7 +100,26 @@ export function SaleFormPage() {
   }
 
   const changeProductType = (index: number, productType: ProductType) => {
-    updateItem(index, { product_type: productType, recipe_id: productType === 'produit_fini' ? values.items[index].recipe_id : '' })
+    const current = values.items[index]
+    if (productType === 'produit_fini') {
+      const recipeId = current.recipe_id || ''
+      const recipe = recipes.find((item) => item.id === recipeId)
+      updateItem(index, {
+        product_type: productType,
+        article_id: '',
+        recipe_id: recipeId,
+        unit_price: Number(recipe?.final_price ?? current.unit_price),
+      })
+      return
+    }
+    const articleId = current.article_id || articles[0]?.id || ''
+    const suggestion = rawPrices.get(articleId)
+    updateItem(index, {
+      product_type: productType,
+      article_id: articleId,
+      recipe_id: '',
+      unit_price: suggestion?.suggestedPrice ?? current.unit_price,
+    })
   }
 
   const changeArticle = (index: number, articleId: string) => {
@@ -110,7 +129,7 @@ export function SaleFormPage() {
 
   const changeRecipe = (index: number, recipeId: string) => {
     const recipe = recipes.find((item) => item.id === recipeId)
-    updateItem(index, { recipe_id: recipeId, unit_price: Number(recipe?.final_price ?? values.items[index].unit_price) })
+    updateItem(index, { recipe_id: recipeId, article_id: '', unit_price: Number(recipe?.final_price ?? values.items[index].unit_price) })
   }
 
   const changeLocation = async (locationId: string) => {
@@ -156,33 +175,49 @@ export function SaleFormPage() {
 
       <section className="surface overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <h2 className="text-lg font-bold">Articles vendus</h2>
+          <div>
+            <h2 className="text-lg font-bold">Produits vendus</h2>
+            <p className="mt-1 text-sm text-slate-600">Choisissez un article brut stocke ou une fiche technique validee.</p>
+          </div>
           <button type="button" onClick={addItem} className="btn-secondary"><Plus className="mr-2 h-4 w-4" /> Ajouter</button>
         </div>
         <div className="divide-y divide-slate-200">
           {values.items.map((item, index) => {
             const article = articles.find((row) => row.id === item.article_id)
+            const recipe = recipes.find((row) => row.id === item.recipe_id)
             const lineTotal = Math.max(0, (Number(item.quantity) - Number(item.quantity_offered ?? 0)) * Number(item.unit_price) - Number(item.discount ?? 0))
             return (
-              <div key={`${item.article_id}-${index}`} className="space-y-3 px-5 py-4">
+              <div key={`${item.article_id || item.recipe_id || 'line'}-${index}`} className="space-y-3 px-5 py-4">
                 <div className="grid gap-3 xl:grid-cols-[150px_1fr_100px_100px_130px_120px_120px_44px] xl:items-end">
                   <label><span className="field-label">Type</span><select value={item.product_type} onChange={(event) => changeProductType(index, event.target.value as ProductType)} className="input mt-2">{productTypes.map((type) => <option key={type} value={type}>{productTypeLabels[type]}</option>)}</select></label>
-                  <label><span className="field-label">Article stock</span><select value={item.article_id} onChange={(event) => changeArticle(index, event.target.value)} className="input mt-2"><option value="">Article a vendre sans transformation</option>{articles.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
+                  {item.product_type === 'produit_brut' ? (
+                    <label>
+                      <span className="field-label">Article a vendre sans transformation</span>
+                      <select value={item.article_id ?? ''} onChange={(event) => changeArticle(index, event.target.value)} className="input mt-2">
+                        <option value="">Selectionner un article stock</option>
+                        {articles.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+                      </select>
+                    </label>
+                  ) : (
+                    <label>
+                      <span className="field-label">Produit fini / fiche technique</span>
+                      <select value={item.recipe_id ?? ''} onChange={(event) => changeRecipe(index, event.target.value)} className="input mt-2">
+                        <option value="">Selectionner une fiche validee</option>
+                        {recipes.map((row) => <option key={row.id} value={row.id}>{row.code ? `${row.code} - ` : ''}{row.name} ({Number(row.final_price ?? 0).toLocaleString('fr-FR')} Ar)</option>)}
+                      </select>
+                    </label>
+                  )}
                   <label><span className="field-label">Quantite</span><input type="number" value={item.quantity} onChange={(event) => updateItem(index, { quantity: Number(event.target.value) })} className="input mt-2" /></label>
                   <label><span className="field-label">Offert</span><input type="number" value={item.quantity_offered} onChange={(event) => updateItem(index, { quantity_offered: Number(event.target.value) })} className="input mt-2" /></label>
                   <label><span className="field-label">Prix</span><input type="number" value={item.unit_price} onChange={(event) => updateItem(index, { unit_price: Number(event.target.value) })} className="input mt-2" /></label>
                   <label><span className="field-label">Remise</span><input type="number" value={item.discount} onChange={(event) => updateItem(index, { discount: Number(event.target.value) })} className="input mt-2" /></label>
-                  <div><span className="field-label">Total</span><p className="mt-2 font-bold">{lineTotal.toLocaleString('fr-FR')} Ar</p><p className="text-xs text-slate-500">{article?.units?.abbreviation}</p></div>
+                  <div><span className="field-label">Total</span><p className="mt-2 font-bold">{lineTotal.toLocaleString('fr-FR')} Ar</p><p className="text-xs text-slate-500">{item.product_type === 'produit_brut' ? article?.units?.abbreviation : recipe?.code}</p></div>
                   <button type="button" onClick={() => removeItem(index)} className="btn-secondary text-red-700"><Trash2 className="h-4 w-4" /></button>
                 </div>
                 {item.product_type === 'produit_fini' && (
-                  <label className="block">
-                    <span className="field-label">Fiche technique liee</span>
-                    <select value={item.recipe_id ?? ''} onChange={(event) => changeRecipe(index, event.target.value)} className="input mt-2">
-                      <option value="">Aucune fiche liee</option>
-                      {recipes.map((recipe) => <option key={recipe.id} value={recipe.id}>{recipe.code ? `${recipe.code} - ` : ''}{recipe.name} ({Number(recipe.final_price ?? 0).toLocaleString('fr-FR')} Ar)</option>)}
-                    </select>
-                  </label>
+                  <p className="rounded-md bg-amber-50 p-3 text-xs font-semibold text-amber-800">
+                    Produit fini vendu depuis une fiche technique. Les ingredients de la fiche seront sortis automatiquement du stock.
+                  </p>
                 )}
                 {item.product_type === 'produit_brut' && item.article_id && rawPrices.has(item.article_id) && (
                   <p className="rounded-md bg-blue-50 p-3 text-xs font-semibold text-blue-800">
@@ -195,6 +230,7 @@ export function SaleFormPage() {
           })}
           {values.items.length === 0 && <p className="p-5 text-sm text-slate-600">Aucun article.</p>}
           {articles.length === 0 && <p className="px-5 pb-5 text-sm font-semibold text-amber-700">Aucun article coche "A vendre sans transformation" n'est disponible pour la vente.</p>}
+          {recipes.length === 0 && <p className="px-5 pb-5 text-sm font-semibold text-amber-700">Aucune fiche technique validee n'est disponible pour les produits finis.</p>}
         </div>
       </section>
 

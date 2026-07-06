@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase'
 import { getStockQuantity } from './stock.api'
 import { createStockOutRows } from './stockOuts.api'
+import { getRecipe } from './recipes.api'
 import { calculateSaleTotals, salesPointLabels } from '../../lib/sales'
 import type { Sale, SaleFormValues, SalesStatsPayload, SaleStatsRow, SalesChannel, SalesPoint, SalesStatus, ServiceMode } from '../../lib/sales'
 
@@ -30,7 +31,7 @@ export async function listSales(filters: SalesFilters = {}) {
 
   let query = supabase.schema('stock')
     .from('sales')
-    .select('*, events(id, name), creator:profiles!sales_created_by_fkey(id, full_name), sale_items(*, articles(id, name, unit_id, families(id, name), units(id, name, abbreviation)))', { count: 'exact' })
+    .select('*, events(id, name), creator:profiles!sales_created_by_fkey(id, full_name), sale_items(*, articles(id, name, unit_id, families(id, name), units(id, name, abbreviation)), recipes(id, name, code, final_price, total_cost))', { count: 'exact' })
     .order('sale_date', { ascending: false })
     .range(from, to)
 
@@ -90,7 +91,7 @@ export async function createSale(values: SaleFormValues, profileId: string, role
       .from('sale_items')
       .insert({
         sale_id: sale.id,
-        article_id: item.article_id,
+        article_id: item.product_type === 'produit_brut' ? item.article_id : null,
         product_type: item.product_type,
         quantity: item.quantity,
         quantity_offered: item.quantity_offered,
@@ -105,6 +106,29 @@ export async function createSale(values: SaleFormValues, profileId: string, role
     if (itemError) throw itemError
 
     if (billableQuantity <= 0) continue
+    if (item.product_type === 'produit_fini') {
+      if (!item.recipe_id) throw new Error('Fiche technique obligatoire')
+      const recipeItems = await buildRecipeStockOutItems(item.recipe_id, billableQuantity, values.location_id)
+      const stockOutIds = await createStockOutRows({
+        event_id: values.event_id,
+        out_date: values.sale_date.slice(0, 10),
+        destination: mapSalePointToStockDestination(values.sales_point),
+        reason: `Vente produit fini ${salesPointLabels[values.sales_point]}`,
+        comment: values.comment,
+        items: recipeItems,
+      }, profileId, role)
+
+      for (const stockOutId of stockOutIds) {
+        const { error: linkError } = await supabase.schema('stock').from('sale_stock_outs').insert({
+          sale_id: sale.id,
+          sale_item_id: saleItem.id,
+          stock_out_id: stockOutId,
+        })
+        if (linkError) throw linkError
+      }
+      continue
+    }
+    if (!item.article_id) throw new Error('Article obligatoire')
     const stockOutIds = await createStockOutRows({
       event_id: values.event_id,
       out_date: values.sale_date.slice(0, 10),
@@ -192,37 +216,43 @@ export async function returnSaleItem(params: { saleId: string; saleItemId: strin
   const maxReturn = Math.max(0, Number(item.quantity ?? 0) - Number(item.quantity_offered ?? 0) - alreadyReturned)
   if (params.quantity > maxReturn) throw new Error('La quantite retournee depasse la quantite vendue')
 
-  const stockOut = sale.sale_stock_outs?.find((link) => link.sale_item_id === item.id)?.stock_outs
-  if (!stockOut) throw new Error('Sortie de stock introuvable')
-  const unitCost = await getAverageStockCost(stockOut.article_id)
-  const { data: movement, error: movementError } = await supabase.schema('stock')
-    .from('stock_movements')
-    .insert({
-      article_id: stockOut.article_id,
-      quantity: params.quantity,
-      unit_id: stockOut.unit_id,
-      movement_type: 'retour',
-      to_location_id: stockOut.location_id,
-      movement_date: new Date().toISOString().slice(0, 10),
-      reference_type: 'sale_partial_return',
-      reference_id: params.saleId,
-      status: 'normal',
-      unit_cost: unitCost,
-      price_source: 'average',
-      comment: `Retour partiel vente ${sale.reference}`,
-      created_by: params.profileId,
-      updated_by: params.profileId,
-    })
-    .select('id')
-    .single()
-  if (movementError) throw movementError
+  const linkedStockOuts = (sale.sale_stock_outs ?? []).filter((link) => link.sale_item_id === item.id).map((link) => link.stock_outs).filter(Boolean)
+  let movementId: string | null = null
+  for (const stockOut of linkedStockOuts) {
+    if (!stockOut) continue
+    const ratio = maxReturn > 0 ? params.quantity / maxReturn : 1
+    const returnedStockQuantity = Number(stockOut.quantity ?? 0) * ratio
+    const unitCost = await getAverageStockCost(stockOut.article_id)
+    const { data: movement, error: movementError } = await supabase.schema('stock')
+      .from('stock_movements')
+      .insert({
+        article_id: stockOut.article_id,
+        quantity: returnedStockQuantity,
+        unit_id: stockOut.unit_id,
+        movement_type: 'retour',
+        to_location_id: stockOut.location_id,
+        movement_date: new Date().toISOString().slice(0, 10),
+        reference_type: 'sale_partial_return',
+        reference_id: params.saleId,
+        status: 'normal',
+        unit_cost: unitCost,
+        price_source: 'average',
+        comment: `Retour partiel vente ${sale.reference}`,
+        created_by: params.profileId,
+        updated_by: params.profileId,
+      })
+      .select('id')
+      .single()
+    if (movementError) throw movementError
+    movementId = movementId ?? movement.id
+  }
 
   const { error: returnError } = await supabase.schema('stock').from('sale_returns').insert({
     sale_id: params.saleId,
     sale_item_id: params.saleItemId,
     quantity: params.quantity,
     reason: params.reason.trim(),
-    stock_movement_id: movement.id,
+    stock_movement_id: movementId,
     created_by: params.profileId,
   })
   if (returnError) throw returnError
@@ -264,8 +294,8 @@ export async function getSalesStats(filters: Pick<SalesFilters, 'fromDate' | 'to
   const returnedQuantity = sales.reduce((sum, sale) => sum + (sale.sale_items ?? []).reduce((itemSum, item) => itemSum + Number(item.returned_quantity ?? 0), 0), 0)
   const revenue = sales.reduce((sum, sale) => sum + Number(sale.total_after_discount ?? 0), 0)
   return {
-    byArticle: aggregateStats(sales, (_sale, item) => item.articles?.name ?? item.article_id),
-    byFamily: aggregateStats(sales, (_sale, item) => item.articles?.families?.name ?? 'Sans famille'),
+    byArticle: aggregateStats(sales, (_sale, item) => item.articles?.name ?? item.recipes?.name ?? 'Produit fini'),
+    byFamily: aggregateStats(sales, (_sale, item) => item.articles?.families?.name ?? (item.recipes ? 'Produits finis' : 'Sans famille')),
     byChannel: aggregateStats(sales, (sale) => sale.channel),
     byService: aggregateStats(sales, (sale) => sale.service_mode),
     byPoint: aggregateStats(sales, (sale) => sale.sales_point),
@@ -339,10 +369,46 @@ async function validateSaleValues(values: SaleFormValues) {
     if (item.unit_price <= 0) throw new Error('Le prix unitaire doit etre superieur a 0')
     if (item.quantity_offered > item.quantity) throw new Error('La quantite offerte ne peut pas depasser la quantite vendue')
     if (item.quantity_offered > 0 && !item.offer_reason?.trim()) throw new Error('Le motif est obligatoire pour une offre')
+    if (item.product_type === 'produit_fini') {
+      if (!item.recipe_id?.trim()) throw new Error('Fiche technique obligatoire')
+      const billableQuantity = Math.max(0, Number(item.quantity) - Number(item.quantity_offered ?? 0))
+      const recipeItems = await buildRecipeStockOutItems(item.recipe_id, billableQuantity, values.location_id)
+      for (const ingredient of recipeItems) {
+        const available = await getStockQuantity(ingredient.article_id, values.location_id)
+        if (available < ingredient.quantity) throw new Error('Stock insuffisant pour cette vente')
+      }
+      continue
+    }
+    if (!item.article_id?.trim()) throw new Error('Article obligatoire')
     const billableQuantity = Math.max(0, Number(item.quantity) - Number(item.quantity_offered ?? 0))
     const available = await getStockQuantity(item.article_id, values.location_id)
     if (available < billableQuantity) throw new Error('Stock insuffisant pour cette vente')
   }
+}
+
+async function buildRecipeStockOutItems(recipeId: string, soldQuantity: number, locationId: string) {
+  const recipe = await getRecipe(recipeId)
+  const multiplier = Number(soldQuantity ?? 0) / Math.max(1, Number(recipe.portions ?? 1))
+  return (recipe.recipe_ingredients ?? [])
+    .map((ingredient) => {
+      const articleId = ingredient.article_id
+      const unitId = ingredient.unit_stored ?? ingredient.articles?.unit_id ?? ingredient.unit_id
+      const quantity = Number(ingredient.quantity_stored ?? ingredient.quantity ?? 0) * multiplier
+      return {
+        article_id: articleId,
+        quantity,
+        unit_id: unitId,
+        location_id: locationId,
+        theoretical_quantity: quantity,
+        recipe_id: recipe.id,
+        is_additional: false,
+        is_return: false,
+        return_quantity: 0,
+        is_loss: false,
+        loss_comment: '',
+      }
+    })
+    .filter((item) => item.article_id && item.unit_id && item.quantity > 0)
 }
 
 function mapSalePointToStockDestination(point: SalesPoint) {

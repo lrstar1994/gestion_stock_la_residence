@@ -110,7 +110,15 @@ export function SaleDetail() {
         <div className="divide-y divide-slate-200">
           {sale.sale_items?.map((item) => (
             <div key={item.id} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_130px_100px_100px_100px_120px_120px_130px_120px] xl:items-center">
-              <span><span className="block font-semibold">{item.articles?.name}</span><span className="text-xs text-slate-500">{item.recipes?.name || item.articles?.families?.name || ''}</span>{item.offer_reason && <span className="mt-1 block text-xs font-semibold text-amber-700">Offre : {item.offer_reason}</span>}</span>
+              <span>
+                <span className="block font-semibold">{item.articles?.name || item.recipes?.name || '-'}</span>
+                <span className="text-xs text-slate-500">
+                  {item.product_type === 'produit_fini'
+                    ? item.recipes?.code || 'Fiche technique'
+                    : item.articles?.families?.name || 'Article stock'}
+                </span>
+                {item.offer_reason && <span className="mt-1 block text-xs font-semibold text-amber-700">Offre : {item.offer_reason}</span>}
+              </span>
               <span>{productTypeLabels[item.product_type]}</span>
               <span>{Number(item.quantity).toLocaleString('fr-FR')}</span>
               <span>{Number(item.quantity_offered ?? 0).toLocaleString('fr-FR')}</span>
