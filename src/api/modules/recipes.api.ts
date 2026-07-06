@@ -73,9 +73,9 @@ export async function listRecipes(filters: RecipeFilters = {}) {
 
 export async function getRecipe(id: string) {
   const fullSelect =
-    '*, validator:profiles!recipes_validated_by_fkey(id, full_name), recipe_ingredients(*, articles(id, name, unit_id, units(id, name, abbreviation)), units:units!recipe_ingredients_unit_id_fkey(id, name, abbreviation), display_unit:units!recipe_ingredients_unit_display_fkey(id, name, abbreviation), stored_unit:units!recipe_ingredients_unit_stored_fkey(id, name, abbreviation)), pending_ingredients(*)'
+    '*, validator:profiles!recipes_validated_by_fkey(id, full_name), recipe_ingredients(*, articles(id, name, unit_id, units(id, name, abbreviation), article_locations(locations(*))), units:units!recipe_ingredients_unit_id_fkey(id, name, abbreviation), display_unit:units!recipe_ingredients_unit_display_fkey(id, name, abbreviation), stored_unit:units!recipe_ingredients_unit_stored_fkey(id, name, abbreviation)), pending_ingredients(*)'
   const legacySelect =
-    '*, validator:profiles!recipes_validated_by_fkey(id, full_name), recipe_ingredients(*, articles(id, name, unit_id, units(id, name, abbreviation)), units:units!recipe_ingredients_unit_id_fkey(id, name, abbreviation)), pending_ingredients(*)'
+    '*, validator:profiles!recipes_validated_by_fkey(id, full_name), recipe_ingredients(*, articles(id, name, unit_id, units(id, name, abbreviation), article_locations(locations(*))), units:units!recipe_ingredients_unit_id_fkey(id, name, abbreviation)), pending_ingredients(*)'
 
   const { data, error } = await supabase.schema('stock')
     .from('recipes')

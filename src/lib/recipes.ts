@@ -120,7 +120,7 @@ export type RecipeIngredient = {
   conversion_factor: number | null
   resolution_status: PendingIngredientStatus
   sort_order: number
-  articles?: Pick<Article, 'id' | 'name' | 'unit_id'> & { units?: Pick<Unit, 'id' | 'name' | 'abbreviation'> }
+  articles?: Pick<Article, 'id' | 'name' | 'unit_id' | 'article_locations'> & { units?: Pick<Unit, 'id' | 'name' | 'abbreviation'> }
   units?: Pick<Unit, 'id' | 'name' | 'abbreviation'>
   display_unit?: Pick<Unit, 'id' | 'name' | 'abbreviation'>
   stored_unit?: Pick<Unit, 'id' | 'name' | 'abbreviation'>

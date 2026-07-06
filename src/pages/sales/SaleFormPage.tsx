@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { Link, useNavigate } from 'react-router-dom'
 import { listArticles, listLocations } from '../../api/modules/catalog.api'
 import { listEvents } from '../../api/modules/events.api'
-import { listRecipes } from '../../api/modules/recipes.api'
+import { getRecipe, listRecipes } from '../../api/modules/recipes.api'
 import { createSale, getSalePriceSuggestions } from '../../api/modules/sales.api'
 import { getUnconfirmedInitialInventoryCount } from '../../api/modules/inventories.api'
 import { useAuth } from '../../hooks/useAuth'
@@ -46,6 +46,7 @@ export function SaleFormPage() {
   const [locations, setLocations] = useState<Location[]>([])
   const [events, setEvents] = useState<Event[]>([])
   const [recipes, setRecipes] = useState<Recipe[]>([])
+  const [recipeDetails, setRecipeDetails] = useState<Map<string, Recipe>>(new Map())
   const [rawPrices, setRawPrices] = useState<Map<string, { lastPrice: number; averagePrice: number; suggestedPrice: number }>>(new Map())
   const [unconfirmedInitial, setUnconfirmedInitial] = useState(0)
   const totals = useMemo(() => calculateSaleTotals(values.items), [values.items])
@@ -59,24 +60,66 @@ export function SaleFormPage() {
       getSalePriceSuggestions(),
     ])
       .then(([articleResult, loadedLocations, eventResult, recipeResult, suggestions]) => {
-        const defaultLocationId = loadedLocations[0]?.id ?? ''
         setArticles(articleResult.articles)
         setLocations(loadedLocations)
         setEvents(eventResult.events)
         setRecipes(recipeResult.recipes)
         setRawPrices(suggestions.rawPrices)
-        setValues((current) => ({
-          ...current,
-          location_id: defaultLocationId,
-          items: current.items.map((item) => ({ ...item, location_id: item.location_id || defaultLocationId })),
-        }))
-        if (defaultLocationId) getUnconfirmedInitialInventoryCount(defaultLocationId).then(setUnconfirmedInitial).catch(() => undefined)
       })
       .catch(() => toast.error('Impossible de charger le formulaire.'))
   }, [])
 
+  const getArticleAllowedLocations = (article?: Article) => {
+    const allowedIds = new Set((article?.article_locations ?? []).map((item) => item.locations.id))
+    return locations.filter((location) => allowedIds.has(location.id))
+  }
+
+  const getRecipeAllowedLocations = (recipe?: Recipe) => {
+    const ingredients = recipe?.recipe_ingredients ?? []
+    if (ingredients.length === 0) return []
+    let commonIds: Set<string> | null = null
+
+    for (const ingredient of ingredients) {
+      const ingredientIds: Set<string> = new Set((ingredient.articles?.article_locations ?? []).map((item) => item.locations.id))
+      if (ingredientIds.size === 0) return []
+      if (commonIds) {
+        const previousIds: string[] = Array.from(commonIds)
+        commonIds = new Set(previousIds.filter((id) => ingredientIds.has(id)))
+      } else {
+        commonIds = ingredientIds
+      }
+    }
+
+    return locations.filter((location) => commonIds?.has(location.id))
+  }
+
+  const getAllowedLocationsForItem = (item: SaleFormValues['items'][number]) => {
+    if (item.product_type === 'produit_fini') {
+      return getRecipeAllowedLocations(recipeDetails.get(item.recipe_id ?? ''))
+    }
+    return getArticleAllowedLocations(articles.find((row) => row.id === item.article_id))
+  }
+
+  const ensureAllowedLocation = (currentLocationId: string | undefined, allowedLocations: Location[]) => {
+    if (currentLocationId && allowedLocations.some((location) => location.id === currentLocationId)) return currentLocationId
+    return allowedLocations[0]?.id ?? ''
+  }
+
+  const loadRecipeDetail = async (recipeId: string) => {
+    const existing = recipeDetails.get(recipeId)
+    if (existing) return existing
+    const detail = await getRecipe(recipeId)
+    setRecipeDetails((current) => {
+      const next = new Map(current)
+      next.set(recipeId, detail)
+      return next
+    })
+    return detail
+  }
+
   const addItem = () => {
     const article = articles[0]
+    const allowedLocations = getArticleAllowedLocations(article)
     setValues((current) => ({
       ...current,
       items: [...current.items, {
@@ -86,7 +129,7 @@ export function SaleFormPage() {
         quantity_offered: 0,
         unit_price: 0,
         discount: 0,
-        location_id: current.location_id,
+        location_id: allowedLocations[0]?.id ?? '',
         offer_reason: '',
         comment: '',
         recipe_id: '',
@@ -105,42 +148,63 @@ export function SaleFormPage() {
     setValues((current) => ({ ...current, items: current.items.filter((_, itemIndex) => itemIndex !== index) }))
   }
 
-  const changeProductType = (index: number, productType: ProductType) => {
+  const changeProductType = async (index: number, productType: ProductType) => {
     const current = values.items[index]
     if (productType === 'produit_fini') {
       const recipeId = current.recipe_id || ''
-      const recipe = recipes.find((item) => item.id === recipeId)
+      const recipe = recipeId ? await loadRecipeDetail(recipeId) : undefined
+      const allowedLocations = getRecipeAllowedLocations(recipe)
       updateItem(index, {
         product_type: productType,
         article_id: '',
         recipe_id: recipeId,
+        location_id: ensureAllowedLocation(current.location_id, allowedLocations),
         unit_price: Number(recipe?.final_price ?? current.unit_price),
       })
       return
     }
     const articleId = current.article_id || articles[0]?.id || ''
+    const article = articles.find((item) => item.id === articleId)
     const suggestion = rawPrices.get(articleId)
+    const allowedLocations = getArticleAllowedLocations(article)
     updateItem(index, {
       product_type: productType,
       article_id: articleId,
       recipe_id: '',
+      location_id: ensureAllowedLocation(current.location_id, allowedLocations),
       unit_price: suggestion?.suggestedPrice ?? current.unit_price,
     })
   }
 
   const changeArticle = (index: number, articleId: string) => {
+    const current = values.items[index]
+    const article = articles.find((item) => item.id === articleId)
+    const allowedLocations = getArticleAllowedLocations(article)
     const suggestion = rawPrices.get(articleId)
-    updateItem(index, { article_id: articleId, unit_price: suggestion?.suggestedPrice ?? values.items[index].unit_price })
+    updateItem(index, {
+      article_id: articleId,
+      location_id: ensureAllowedLocation(current.location_id, allowedLocations),
+      unit_price: suggestion?.suggestedPrice ?? current.unit_price,
+    })
   }
 
-  const changeRecipe = (index: number, recipeId: string) => {
-    const recipe = recipes.find((item) => item.id === recipeId)
-    updateItem(index, { recipe_id: recipeId, article_id: '', unit_price: Number(recipe?.final_price ?? values.items[index].unit_price) })
+  const changeRecipe = async (index: number, recipeId: string) => {
+    const current = values.items[index]
+    const recipe = recipeId ? await loadRecipeDetail(recipeId) : undefined
+    const allowedLocations = getRecipeAllowedLocations(recipe)
+    updateItem(index, {
+      recipe_id: recipeId,
+      article_id: '',
+      location_id: ensureAllowedLocation(current.location_id, allowedLocations),
+      unit_price: Number(recipe?.final_price ?? current.unit_price),
+    })
   }
 
-  const changeLocation = async (locationId: string) => {
-    setValues((current) => ({ ...current, location_id: locationId }))
-    setUnconfirmedInitial(await getUnconfirmedInitialInventoryCount(locationId))
+  const changeItemLocation = async (index: number, locationId: string) => {
+    updateItem(index, { location_id: locationId })
+    if (locationId) {
+      setUnconfirmedInitial(await getUnconfirmedInitialInventoryCount(locationId))
+    }
   }
 
   const submit = async (event: React.FormEvent) => {
@@ -167,7 +231,6 @@ export function SaleFormPage() {
         <label className="block"><span className="field-label">Canal</span><select value={values.channel} onChange={(event) => setValues((current) => ({ ...current, channel: event.target.value as typeof values.channel }))} className="input mt-2">{salesChannels.map((item) => <option key={item} value={item}>{salesChannelLabels[item]}</option>)}</select></label>
         <label className="block"><span className="field-label">Mode de service</span><select value={values.service_mode} onChange={(event) => setValues((current) => ({ ...current, service_mode: event.target.value as typeof values.service_mode }))} className="input mt-2">{serviceModes.map((item) => <option key={item} value={item}>{serviceModeLabels[item]}</option>)}</select></label>
         <label className="block"><span className="field-label">Point de vente</span><select value={values.sales_point} onChange={(event) => setValues((current) => ({ ...current, sales_point: event.target.value as typeof values.sales_point }))} className="input mt-2">{salesPoints.map((item) => <option key={item} value={item}>{salesPointLabels[item]}</option>)}</select></label>
-        <label className="block"><span className="field-label">Localisation par defaut</span><select value={values.location_id} onChange={(event) => changeLocation(event.target.value)} className="input mt-2"><option value="">Selectionner</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
         <label className="block"><span className="field-label">Evenement lie</span><select value={values.event_id} onChange={(event) => setValues((current) => ({ ...current, event_id: event.target.value }))} className="input mt-2"><option value="">Aucun</option>{events.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label className="block md:col-span-3"><span className="field-label">Client</span><input value={values.client_name} onChange={(event) => setValues((current) => ({ ...current, client_name: event.target.value }))} className="input mt-2" /></label>
         <label className="block md:col-span-3"><span className="field-label">Commentaire</span><textarea value={values.comment} onChange={(event) => setValues((current) => ({ ...current, comment: event.target.value }))} className="input mt-2 min-h-20" /></label>
@@ -190,17 +253,18 @@ export function SaleFormPage() {
         <div className="divide-y divide-slate-200">
           {values.items.map((item, index) => {
             const article = articles.find((row) => row.id === item.article_id)
-            const recipe = recipes.find((row) => row.id === item.recipe_id)
+            const recipe = recipeDetails.get(item.recipe_id ?? '') ?? recipes.find((row) => row.id === item.recipe_id)
+            const allowedLocations = getAllowedLocationsForItem(item)
             const lineTotal = Math.max(0, (Number(item.quantity) - Number(item.quantity_offered ?? 0)) * Number(item.unit_price) - Number(item.discount ?? 0))
             return (
               <div key={`${item.article_id || item.recipe_id || 'line'}-${index}`} className="space-y-3 px-5 py-4">
                 <div className="grid gap-3 xl:grid-cols-[140px_180px_1fr_90px_90px_120px_110px_110px_44px] xl:items-end">
-                  <label><span className="field-label">Type</span><select value={item.product_type} onChange={(event) => changeProductType(index, event.target.value as ProductType)} className="input mt-2">{productTypes.map((type) => <option key={type} value={type}>{productTypeLabels[type]}</option>)}</select></label>
+                  <label><span className="field-label">Type</span><select value={item.product_type} onChange={(event) => void changeProductType(index, event.target.value as ProductType)} className="input mt-2">{productTypes.map((type) => <option key={type} value={type}>{productTypeLabels[type]}</option>)}</select></label>
                   <label>
                     <span className="field-label">Localisation</span>
-                    <select value={item.location_id || values.location_id} onChange={(event) => updateItem(index, { location_id: event.target.value })} className="input mt-2">
+                    <select value={item.location_id || ''} onChange={(event) => void changeItemLocation(index, event.target.value)} className="input mt-2">
                       <option value="">Selectionner</option>
-                      {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
+                      {allowedLocations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
                     </select>
                   </label>
                   {item.product_type === 'produit_brut' ? (
@@ -214,7 +278,7 @@ export function SaleFormPage() {
                   ) : (
                     <label>
                       <span className="field-label">Produit fini / fiche technique</span>
-                      <select value={item.recipe_id ?? ''} onChange={(event) => changeRecipe(index, event.target.value)} className="input mt-2">
+                      <select value={item.recipe_id ?? ''} onChange={(event) => void changeRecipe(index, event.target.value)} className="input mt-2">
                         <option value="">Selectionner une fiche validee</option>
                         {recipes.map((row) => <option key={row.id} value={row.id}>{row.code ? `${row.code} - ` : ''}{row.name} ({Number(row.final_price ?? 0).toLocaleString('fr-FR')} Ar)</option>)}
                       </select>
@@ -230,6 +294,11 @@ export function SaleFormPage() {
                 {item.product_type === 'produit_fini' && (
                   <p className="rounded-md bg-amber-50 p-3 text-xs font-semibold text-amber-800">
                     Produit fini vendu depuis une fiche technique. Les ingredients de la fiche seront sortis automatiquement du stock.
+                  </p>
+                )}
+                {allowedLocations.length === 0 && (
+                  <p className="rounded-md bg-red-50 p-3 text-xs font-semibold text-red-800">
+                    Aucune localisation autorisee disponible pour ce produit.
                   </p>
                 )}
                 {item.product_type === 'produit_brut' && item.article_id && rawPrices.has(item.article_id) && (

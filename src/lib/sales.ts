@@ -172,7 +172,7 @@ export const saleFormSchema = z.object({
   channel: z.enum(salesChannels),
   service_mode: z.enum(serviceModes),
   sales_point: z.enum(salesPoints),
-  location_id: z.string().min(1, 'Localisation obligatoire pour la sortie de stock'),
+  location_id: z.string().optional(),
   client_name: z.string().optional(),
   comment: z.string().optional(),
   event_id: z.string().optional(),

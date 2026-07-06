@@ -331,7 +331,7 @@ export async function listArticles(filters: ArticleFilters = {}) {
 
   let query = supabase.schema('stock')
     .from('articles')
-    .select('*, families(id, name), units(id, name, abbreviation)', { count: 'exact' })
+    .select('*, families(id, name), units(id, name, abbreviation), article_locations(locations(*))', { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(from, to)
 

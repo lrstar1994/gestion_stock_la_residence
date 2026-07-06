@@ -107,6 +107,7 @@ export async function createSale(values: SaleFormValues, profileId: string, role
     if (itemError) throw itemError
 
     if (billableQuantity <= 0) continue
+    if (!lineLocationId) throw new Error('Localisation obligatoire pour la sortie de stock')
     if (item.product_type === 'produit_fini') {
       if (!item.recipe_id) throw new Error('Fiche technique obligatoire')
       const recipeItems = await buildRecipeStockOutItems(item.recipe_id, billableQuantity, lineLocationId)
