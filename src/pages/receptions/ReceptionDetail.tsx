@@ -5,7 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { getReception, refuseReception, resolveReceptionAnomaly, submitReception, uploadReceptionDocument, validateReception } from '../../api/modules/receptions.api'
 import { useAuth } from '../../hooks/useAuth'
 import { exportReceptionToPdf } from '../../lib/receptionExports'
-import { anomalyTypeLabels, canCreateReceptions, canValidateReceptionWithAnomalies, canValidateReceptions, qualityStatusLabels, receptionStatusLabels } from '../../lib/receptions'
+import { anomalyTypeLabels, canCreateReceptions, canValidateReceptionWithAnomalies, canValidateReceptions, receptionStatusLabels } from '../../lib/receptions'
 import type { Reception } from '../../lib/receptions'
 
 export function ReceptionDetail() {
@@ -123,97 +123,85 @@ export function ReceptionDetail() {
       </section>
 
       {(reception.purchase_orders || reception.cash_purchases) && (
-        <section className="surface overflow-hidden">
+        <section className="surface">
           <div className="border-b border-slate-200 px-5 py-4">
-            <p className="eyebrow">Requisition</p>
+            <p className="eyebrow">Source de la reception</p>
             <h2 className="mt-1 text-lg font-bold text-slate-950">
               {reception.purchase_orders ? `Commande ${reception.purchase_orders.reference}` : `Achat espece ${reception.cash_purchases?.reference}`}
             </h2>
           </div>
 
           {reception.purchase_orders && (
-            <>
-              <div className="grid gap-4 border-b border-slate-200 p-5 md:grid-cols-3">
-                <InfoFlat label="Statut commande" value={reception.purchase_orders.status} />
-                <InfoFlat label="Montant commande" value={formatMoney(reception.purchase_orders.total_amount)} />
-                <InfoLink label="Voir la commande" value={reception.purchase_orders.reference} to={`/purchase-orders/${reception.purchase_order_id}`} />
-              </div>
-              <div className="overflow-x-auto">
-                <div className="grid min-w-[760px] grid-cols-[1fr_150px_150px_150px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-                  <span>Article commande</span>
-                  <span>Quantite</span>
-                  <span>Prix prevu</span>
-                  <span>Total prevu</span>
-                </div>
-                <div className="divide-y divide-slate-200">
-                  {reception.purchase_orders.purchase_order_items?.map((item) => (
-                    <div key={item.id} className="grid min-w-[760px] grid-cols-[1fr_150px_150px_150px] gap-4 px-5 py-4 text-sm">
-                      <span><span className="block font-semibold text-slate-950">{item.articles?.name || '-'}</span><span className="text-xs text-slate-500">{item.articles?.families?.name || ''}</span></span>
-                      <span>{formatQuantity(item.quantity_ordered, item.units?.abbreviation)}</span>
-                      <span>{formatMoney(item.unit_price)}</span>
-                      <span>{formatMoney(Number(item.quantity_ordered ?? 0) * Number(item.unit_price ?? 0))}</span>
-                    </div>
-                  ))}
-                  {(reception.purchase_orders.purchase_order_items?.length ?? 0) === 0 && <p className="min-w-[760px] p-5 text-sm text-slate-600">Aucun article dans la commande.</p>}
-                </div>
-              </div>
-            </>
+            <div className="grid gap-4 p-5 md:grid-cols-3">
+              <InfoFlat label="Statut commande" value={reception.purchase_orders.status} />
+              <InfoFlat label="Montant commande" value={formatMoney(reception.purchase_orders.total_amount)} />
+              <InfoLink label="Voir la commande" value={reception.purchase_orders.reference} to={`/purchase-orders/${reception.purchase_order_id}`} />
+            </div>
           )}
 
           {reception.cash_purchases && (
-            <>
-              <div className="grid gap-4 border-b border-slate-200 p-5 md:grid-cols-4">
-                <InfoFlat label="Montant demande" value={formatMoney(reception.cash_purchases.amount_requested)} />
-                <InfoFlat label="Montant valide" value={formatMoney(reception.cash_purchases.amount_validated)} />
-                <InfoFlat label="Monnaie remise" value={formatMoney(reception.cash_purchases.amount_given)} />
-                <InfoFlat label="Ecart" value={formatMoney(reception.cash_purchases.difference)} />
-              </div>
-              <div className="overflow-x-auto">
-                <div className="grid min-w-[980px] grid-cols-[1fr_130px_140px_140px_130px_140px_140px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-                  <span>Article demande</span>
-                  <span>Qte prevue</span>
-                  <span>Prix estime</span>
-                  <span>Total estime</span>
-                  <span>Qte achetee</span>
-                  <span>Prix reel</span>
-                  <span>Total reel</span>
-                </div>
-                <div className="divide-y divide-slate-200">
-                  {reception.cash_purchases.cash_purchase_items?.map((item) => (
-                    <div key={item.id} className="grid min-w-[980px] grid-cols-[1fr_130px_140px_140px_130px_140px_140px] gap-4 px-5 py-4 text-sm">
-                      <span className="font-semibold text-slate-950">{item.articles?.name || '-'}</span>
-                      <span>{formatQuantity(item.quantity_planned, item.units?.abbreviation)}</span>
-                      <span>{formatMoney(item.unit_price_estimated)}</span>
-                      <span>{formatMoney(item.total_estimated)}</span>
-                      <span>{formatQuantity(item.quantity_bought, item.units?.abbreviation)}</span>
-                      <span>{formatMoney(item.unit_price_real)}</span>
-                      <span>{formatMoney(item.total_real)}</span>
-                    </div>
-                  ))}
-                  {(reception.cash_purchases.cash_purchase_items?.length ?? 0) === 0 && <p className="min-w-[980px] p-5 text-sm text-slate-600">Aucun article dans l'achat espece.</p>}
-                </div>
-              </div>
-            </>
+            <div className="grid gap-4 p-5 md:grid-cols-4">
+              <InfoFlat label="Montant demande" value={formatMoney(reception.cash_purchases.amount_requested)} />
+              <InfoFlat label="Montant valide" value={formatMoney(reception.cash_purchases.amount_validated)} />
+              <InfoFlat label="Monnaie remise" value={formatMoney(reception.cash_purchases.amount_given)} />
+              <InfoFlat label="Ecart achat" value={formatMoney(reception.cash_purchases.difference)} />
+            </div>
           )}
         </section>
       )}
 
       <section className="surface overflow-hidden">
-        <div className="hidden grid-cols-[1fr_100px_100px_100px_100px_130px_140px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
-          <span>Article</span><span>Commande</span><span>Livre</span><span>Accepte</span><span>Refuse</span><span>Prix reel</span><span>Qualite</span>
+        <div className="border-b border-slate-200 px-5 py-4">
+          <p className="eyebrow">Controle reception</p>
+          <h2 className="mt-1 text-lg font-bold text-slate-950">Prevu vs reel</h2>
         </div>
-        <div className="divide-y divide-slate-200">
-          {reception.reception_items?.map((item) => (
-            <div key={item.id} className="space-y-3 px-5 py-4">
-              <div className="grid gap-3 xl:grid-cols-[1fr_100px_100px_100px_100px_130px_140px] xl:items-center">
-                <span><span className="block font-semibold">{item.articles?.name}</span><span className="text-xs text-slate-500">{item.articles?.families?.name || ''}</span></span>
-                <span>{Number(item.quantity_ordered ?? 0).toLocaleString('fr-FR')} {item.units?.abbreviation}</span>
-                <span>{Number(item.quantity_delivered ?? 0).toLocaleString('fr-FR')} {item.units?.abbreviation}</span>
-                <span>{Number(item.quantity_accepted ?? 0).toLocaleString('fr-FR')} {item.units?.abbreviation}</span>
-                <span>{Number(item.quantity_refused ?? 0).toLocaleString('fr-FR')} {item.units?.abbreviation}</span>
-                <span>{Number(item.unit_price_real ?? 0).toLocaleString('fr-FR')} Ar</span>
-                <span className="w-fit rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[#1E3A8A]">{qualityStatusLabels[item.quality]}</span>
-              </div>
+        <div className="overflow-x-auto">
+          <div className="grid min-w-[1320px] grid-cols-[1.3fr_120px_120px_120px_120px_120px_120px_120px_130px_130px_120px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+            <span>Article</span>
+            <span>Prevu</span>
+            <span>Livre</span>
+            <span>Accepte</span>
+            <span>Ecart qte</span>
+            <span>Prix prevu</span>
+            <span>Prix reel</span>
+            <span>Ecart prix</span>
+            <span>Total prevu</span>
+            <span>Total reel</span>
+            <span>Statut</span>
+          </div>
+          <div className="divide-y divide-slate-200">
+            {reception.reception_items?.map((item) => {
+              const expectedQuantity = Number(item.quantity_ordered ?? 0)
+              const acceptedQuantity = Number(item.quantity_accepted ?? 0)
+              const quantityDiff = acceptedQuantity - expectedQuantity
+              const plannedPrice = Number(item.unit_price_planned ?? 0)
+              const realPrice = Number(item.unit_price_real ?? 0)
+              const priceDiff = realPrice - plannedPrice
+              const plannedTotal = expectedQuantity * plannedPrice
+              const realTotal = acceptedQuantity * realPrice
+              const isConform = quantityDiff === 0 && priceDiff === 0 && item.quality === 'conforme' && !item.has_anomaly && (item.reception_anomalies?.length ?? 0) === 0
+
+              return (
+                <div key={item.id} className="space-y-3 px-5 py-4">
+                  <div className="grid min-w-[1320px] grid-cols-[1.3fr_120px_120px_120px_120px_120px_120px_120px_130px_130px_120px] items-center gap-4 text-sm">
+                    <span><span className="block font-semibold text-slate-950">{item.articles?.name}</span><span className="text-xs text-slate-500">{item.articles?.families?.name || ''}</span></span>
+                    <span>{formatQuantity(expectedQuantity, item.units?.abbreviation)}</span>
+                    <span>{formatQuantity(item.quantity_delivered, item.units?.abbreviation)}</span>
+                    <span>{formatQuantity(acceptedQuantity, item.units?.abbreviation)}</span>
+                    <span className={quantityDiff === 0 ? 'text-slate-700' : quantityDiff < 0 ? 'font-semibold text-red-700' : 'font-semibold text-amber-700'}>
+                      {formatSignedQuantity(quantityDiff, item.units?.abbreviation)}
+                    </span>
+                    <span>{formatMoney(plannedPrice)}</span>
+                    <span>{formatMoney(realPrice)}</span>
+                    <span className={priceDiff === 0 ? 'text-slate-700' : priceDiff > 0 ? 'font-semibold text-amber-700' : 'font-semibold text-emerald-700'}>
+                      {formatSignedMoney(priceDiff)}
+                    </span>
+                    <span>{formatMoney(plannedTotal)}</span>
+                    <span className="font-semibold text-slate-950">{formatMoney(realTotal)}</span>
+                    <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${isConform ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>
+                      {isConform ? 'Conforme' : 'Ecart'}
+                    </span>
+                  </div>
               {item.quality_comment && <p className="text-sm text-slate-600">Qualite : {item.quality_comment}</p>}
               {(item.reception_anomalies?.length ?? 0) > 0 && (
                 <div className="grid gap-3 md:grid-cols-2">
@@ -229,8 +217,11 @@ export function ReceptionDetail() {
                   ))}
                 </div>
               )}
-            </div>
-          ))}
+                </div>
+              )
+            })}
+            {(reception.reception_items?.length ?? 0) === 0 && <p className="min-w-[1320px] p-5 text-sm text-slate-600">Aucun article receptionne.</p>}
+          </div>
         </div>
       </section>
 
@@ -288,6 +279,16 @@ function formatMoney(value: number | string | null | undefined) {
 
 function formatQuantity(value: number | string | null | undefined, unit?: string) {
   return `${Number(value ?? 0).toLocaleString('fr-FR')} ${unit ?? ''}`.trim()
+}
+
+function formatSignedQuantity(value: number, unit?: string) {
+  const sign = value > 0 ? '+' : ''
+  return `${sign}${value.toLocaleString('fr-FR')} ${unit ?? ''}`.trim()
+}
+
+function formatSignedMoney(value: number) {
+  const sign = value > 0 ? '+' : ''
+  return `${sign}${value.toLocaleString('fr-FR')} Ar`
 }
 
 function InfoFlat({ label, value }: { label: string; value: string }) {
