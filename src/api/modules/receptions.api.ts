@@ -49,13 +49,38 @@ export async function listReceptions(filters: ReceptionFilters = {}) {
 }
 
 export async function getReception(id: string) {
+  const fullSelect = '*, suppliers(*), locations(id, name), purchase_orders(id, reference, status, total_amount, purchase_order_items(*, articles(id, name, unit_id, families(id, name)), units(id, name, abbreviation))), cash_purchases(id, reference, status, amount_requested, amount_validated, amount_given, total_purchased, change_expected, change_returned, difference, cash_purchase_items(*, articles(id, name, unit_id, units(id, name, abbreviation)), units(id, name, abbreviation))), receiver:profiles!receptions_created_by_fkey(id, full_name, role), validator:profiles!receptions_validated_by_fkey(id, full_name), reception_items(*, articles(id, name, families(id, name)), units(id, name, abbreviation), display_unit:units!reception_items_unit_display_id_fkey(id, name, abbreviation), reception_anomalies(*)), reception_documents(*), reception_history(*, actor:profiles!reception_history_created_by_fkey(id, full_name))'
+  const legacySelect = '*, suppliers(*), locations(id, name), purchase_orders(id, reference, status, total_amount, purchase_order_items(*, articles(id, name, unit_id, families(id, name)), units(id, name, abbreviation))), cash_purchases(id, reference, status, amount_requested, amount_validated, amount_given, total_purchased, change_expected, change_returned, difference, cash_purchase_items(*, articles(id, name, unit_id, units(id, name, abbreviation)), units(id, name, abbreviation))), receiver:profiles!receptions_created_by_fkey(id, full_name, role), validator:profiles!receptions_validated_by_fkey(id, full_name), reception_items(*, articles(id, name, families(id, name)), units(id, name, abbreviation), reception_anomalies(*)), reception_documents(*), reception_history(*, actor:profiles!reception_history_created_by_fkey(id, full_name))'
+
   const { data, error } = await supabase.schema('stock')
     .from('receptions')
-    .select('*, suppliers(*), locations(id, name), purchase_orders(id, reference, status, total_amount, purchase_order_items(*, articles(id, name, unit_id, families(id, name)), units(id, name, abbreviation))), cash_purchases(id, reference, status, amount_requested, amount_validated, amount_given, total_purchased, change_expected, change_returned, difference, cash_purchase_items(*, articles(id, name, unit_id, units(id, name, abbreviation)), units(id, name, abbreviation))), receiver:profiles!receptions_created_by_fkey(id, full_name, role), validator:profiles!receptions_validated_by_fkey(id, full_name), reception_items(*, articles(id, name, families(id, name)), units(id, name, abbreviation), display_unit:units!reception_items_unit_display_id_fkey(id, name, abbreviation), reception_anomalies(*)), reception_documents(*), reception_history(*, actor:profiles!reception_history_created_by_fkey(id, full_name))')
+    .select(fullSelect)
     .eq('id', id)
     .single()
+
+  if (error && isMissingReceptionConversionSchemaError(error)) {
+    const { data: legacyData, error: legacyError } = await supabase.schema('stock')
+      .from('receptions')
+      .select(legacySelect)
+      .eq('id', id)
+      .single()
+    if (legacyError) throw legacyError
+    return legacyData as Reception
+  }
+
   if (error) throw error
   return data as Reception
+}
+
+function isMissingReceptionConversionSchemaError(error: unknown) {
+  const message = error instanceof Error ? error.message.toLowerCase() : String((error as { message?: string })?.message ?? error).toLowerCase()
+  return (
+    message.includes('reception_items_unit_display_id_fkey') ||
+    message.includes('unit_display_id') ||
+    message.includes('display_unit') ||
+    message.includes('schema cache') ||
+    message.includes('could not find a relationship')
+  )
 }
 
 export async function listReceivableOrders() {
