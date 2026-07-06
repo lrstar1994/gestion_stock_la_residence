@@ -174,25 +174,29 @@ export function ReceptionDetail() {
           </div>
           <div className="divide-y divide-slate-200">
             {reception.reception_items?.map((item) => {
+              const displayUnit = item.display_unit?.abbreviation ?? item.units?.abbreviation
+              const stockUnit = item.units?.abbreviation
               const expectedQuantity = Number(item.quantity_ordered ?? 0)
+              const deliveredDisplay = Number(item.quantity_delivered_display ?? item.quantity_delivered ?? 0)
+              const acceptedDisplay = Number(item.quantity_accepted_display ?? item.quantity_accepted ?? 0)
               const acceptedQuantity = Number(item.quantity_accepted ?? 0)
-              const quantityDiff = acceptedQuantity - expectedQuantity
+              const quantityDiff = acceptedDisplay - expectedQuantity
               const plannedPrice = Number(item.unit_price_planned ?? 0)
-              const realPrice = Number(item.unit_price_real ?? 0)
+              const realPrice = Number(item.unit_price_display ?? item.unit_price_real ?? 0)
               const priceDiff = realPrice - plannedPrice
               const plannedTotal = expectedQuantity * plannedPrice
-              const realTotal = acceptedQuantity * realPrice
+              const realTotal = acceptedDisplay * realPrice
               const isConform = quantityDiff === 0 && priceDiff === 0 && item.quality === 'conforme' && !item.has_anomaly && (item.reception_anomalies?.length ?? 0) === 0
 
               return (
                 <div key={item.id} className="space-y-3 py-4">
                   <div className={`${receptionComparisonGrid} text-sm`}>
                     <span><span className="block font-semibold text-slate-950">{item.articles?.name}</span><span className="text-xs text-slate-500">{item.articles?.families?.name || ''}</span></span>
-                    <span>{formatQuantity(expectedQuantity, item.units?.abbreviation)}</span>
-                    <span>{formatQuantity(item.quantity_delivered, item.units?.abbreviation)}</span>
-                    <span>{formatQuantity(acceptedQuantity, item.units?.abbreviation)}</span>
+                    <span>{formatQuantity(expectedQuantity, displayUnit)}</span>
+                    <span>{formatQuantity(deliveredDisplay, displayUnit)}</span>
+                    <span><span className="block">{formatQuantity(acceptedDisplay, displayUnit)}</span>{displayUnit !== stockUnit && <span className="text-xs text-slate-500">{formatQuantity(acceptedQuantity, stockUnit)} stock</span>}</span>
                     <span className={quantityDiff === 0 ? 'text-slate-700' : quantityDiff < 0 ? 'font-semibold text-red-700' : 'font-semibold text-amber-700'}>
-                      {formatSignedQuantity(quantityDiff, item.units?.abbreviation)}
+                      {formatSignedQuantity(quantityDiff, displayUnit)}
                     </span>
                     <span>{formatMoney(plannedPrice)}</span>
                     <span>{formatMoney(realPrice)}</span>
