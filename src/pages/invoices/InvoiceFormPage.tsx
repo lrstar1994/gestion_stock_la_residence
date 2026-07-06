@@ -1,4 +1,4 @@
-import { Plus, Save, Trash2, Upload } from 'lucide-react'
+import { Save, Upload } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -111,22 +111,6 @@ export function InvoiceFormPage() {
     load().catch(() => toast.error('Impossible de charger le formulaire.'))
   }, [load])
 
-  const addItem = () => {
-    const article = articles[0]
-    setValues((current) => ({ ...current, items: [...current.items, { article_id: article?.id ?? '', quantity: 1, unit_id: article?.unit_id ?? '', unit_price: 0, comment: '' }] }))
-  }
-
-  const updateItem = (index: number, patch: Partial<InvoiceFormValues['items'][number]>) => {
-    setValues((current) => ({ ...current, items: current.items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item) }))
-  }
-
-  const changeArticle = (index: number, articleId: string) => {
-    const article = articles.find((item) => item.id === articleId)
-    updateItem(index, { article_id: articleId, unit_id: article?.unit_id ?? '' })
-  }
-
-  const removeItem = (index: number) => setValues((current) => ({ ...current, items: current.items.filter((_, itemIndex) => itemIndex !== index) }))
-
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     try {
@@ -154,7 +138,8 @@ export function InvoiceFormPage() {
 
       {!isEdit && (
         <section className="surface p-5">
-          <label className="block"><span className="field-label">Depuis une reception</span><select value={values.reception_id} onChange={(event) => { const reception = receptions.find((item) => item.id === event.target.value); if (reception) selectReception(reception); else setValues(emptyForm) }} className="input mt-2"><option value="">Saisie manuelle</option>{receptions.map((reception) => <option key={reception.id} value={reception.id}>{reception.reference} - {reception.suppliers?.name}</option>)}</select></label>
+          <label className="block"><span className="field-label">Reception a facturer</span><select value={values.reception_id} onChange={(event) => { const reception = receptions.find((item) => item.id === event.target.value); if (reception) selectReception(reception); else setValues(emptyForm) }} className="input mt-2"><option value="">Selectionner une reception</option>{receptions.map((reception) => <option key={reception.id} value={reception.id}>{reception.reference} - {reception.suppliers?.name}</option>)}</select></label>
+          <p className="mt-3 text-sm text-slate-600">La facture doit etre rattachee a une reception. Les articles factures sont repris automatiquement depuis la reception selectionnee.</p>
         </section>
       )}
 
@@ -171,18 +156,20 @@ export function InvoiceFormPage() {
       </section>
 
       <section className="surface overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4"><h2 className="text-lg font-bold">Articles factures</h2><button type="button" onClick={addItem} className="btn-secondary"><Plus className="mr-2 h-4 w-4" /> Ajouter</button></div>
+        <div className="border-b border-slate-200 px-5 py-4">
+          <h2 className="text-lg font-bold">Articles factures</h2>
+          <p className="mt-1 text-sm text-slate-600">Lignes reprises depuis la reception. Aucun ajout ou suppression manuel n'est autorise.</p>
+        </div>
         <div className="divide-y divide-slate-200">
           {values.items.map((item, index) => {
             const selectedArticle = articles.find((article) => article.id === item.article_id)
             return (
-              <div key={`${item.article_id}-${index}`} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_110px_120px_140px_140px_44px] xl:items-end">
-                <label className="block"><span className="field-label">Article</span><select value={item.article_id} onChange={(event) => changeArticle(index, event.target.value)} className="input mt-2"><option value="">Article</option>{articles.map((article) => <option key={article.id} value={article.id}>{article.name}</option>)}</select></label>
-                <label className="block"><span className="field-label">Quantite</span><input type="number" value={item.quantity} onChange={(event) => updateItem(index, { quantity: Number(event.target.value) })} className="input mt-2" /></label>
-                <label className="block"><span className="field-label">Unite</span><select value={item.unit_id} onChange={(event) => updateItem(index, { unit_id: event.target.value })} className="input mt-2"><option value={selectedArticle?.unit_id ?? item.unit_id}>{selectedArticle?.units?.abbreviation ?? 'Unite'}</option></select></label>
-                <label className="block"><span className="field-label">Prix unitaire</span><input type="number" value={item.unit_price} onChange={(event) => updateItem(index, { unit_price: Number(event.target.value) })} className="input mt-2" /></label>
+              <div key={`${item.article_id}-${index}`} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_130px_120px_150px_150px] xl:items-center">
+                <div><span className="field-label">Article</span><p className="mt-2 font-semibold text-slate-950">{selectedArticle?.name ?? item.article_id}</p></div>
+                <div><span className="field-label">Quantite</span><p className="mt-2 font-bold">{Number(item.quantity).toLocaleString('fr-FR')}</p></div>
+                <div><span className="field-label">Unite</span><p className="mt-2 font-semibold">{selectedArticle?.units?.abbreviation ?? '-'}</p></div>
+                <div><span className="field-label">Prix unitaire</span><p className="mt-2 font-bold">{Number(item.unit_price).toLocaleString('fr-FR')} Ar</p></div>
                 <div><span className="field-label">Total</span><p className="mt-2 font-bold">{(Number(item.quantity) * Number(item.unit_price)).toLocaleString('fr-FR')} Ar</p></div>
-                <button type="button" onClick={() => removeItem(index)} className="btn-secondary text-red-700"><Trash2 className="h-4 w-4" /></button>
               </div>
             )
           })}

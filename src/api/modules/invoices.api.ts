@@ -148,13 +148,15 @@ export async function updateInvoice(id: string, values: InvoiceFormValues, profi
 }
 
 function validateInvoice(values: InvoiceFormValues) {
+  if (!values.reception_id) throw new Error('Veuillez selectionner une reception')
+  if (values.items.length === 0) throw new Error('La reception selectionnee ne contient aucun article a facturer')
   if (values.due_date < values.invoice_date) throw new Error("La date d'echeance doit etre posterieure a la date de facture")
   if (values.amount_ht < 0 || values.amount_tva < 0) throw new Error('Une erreur est survenue. Veuillez reessayer.')
 }
 
 function buildInvoiceCreationDescription(values: InvoiceFormValues) {
   const total = Number(values.amount_ht ?? 0) + Number(values.amount_tva ?? 0)
-  return values.reception_id ? `Facture creee depuis reception pour ${total.toLocaleString('fr-FR')} Ar` : `Facture creee manuellement pour ${total.toLocaleString('fr-FR')} Ar`
+  return `Facture creee depuis reception pour ${total.toLocaleString('fr-FR')} Ar`
 }
 
 async function replaceInvoiceItems(invoiceId: string, items: InvoiceFormValues['items']) {
