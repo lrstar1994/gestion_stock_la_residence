@@ -148,11 +148,21 @@ export function InvoiceDetail() {
       <section className="surface overflow-hidden">
         <div className="border-b border-slate-200 px-5 py-4"><h2 className="text-lg font-bold">Paiements</h2></div>
         <div className="divide-y divide-slate-200">
+          {(invoice.invoice_payments?.length ?? 0) > 0 && (
+            <div className="hidden grid-cols-[130px_150px_180px_1fr_150px] gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 md:grid">
+              <span>Date</span>
+              <span>Montant</span>
+              <span>Mode</span>
+              <span>Reference paiement</span>
+              <span>Saisi par</span>
+            </div>
+          )}
           {invoice.invoice_payments?.map((item) => (
-            <div key={item.id} className="grid gap-3 px-5 py-4 md:grid-cols-[130px_150px_1fr_150px] md:items-center">
+            <div key={item.id} className="grid gap-3 px-5 py-4 md:grid-cols-[130px_150px_180px_1fr_150px] md:items-center">
               <span>{new Date(item.payment_date).toLocaleDateString('fr-FR')}</span>
               <span>{Number(item.amount).toLocaleString('fr-FR')} Ar</span>
-              <span>{paymentModeLabels[item.payment_mode]} {item.payment_reference ? `- ${item.payment_reference}` : ''}</span>
+              <span>{paymentModeLabels[item.payment_mode]}</span>
+              <span className="font-semibold text-slate-900">{item.payment_reference || '-'}</span>
               <span>{item.creator?.full_name || '-'}</span>
             </div>
           ))}
