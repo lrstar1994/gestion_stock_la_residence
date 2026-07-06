@@ -79,7 +79,7 @@ export async function listInvoiceableReceptions() {
 
 export async function createInvoice(values: InvoiceFormValues, profileId?: string, file?: File) {
   validateInvoice(values)
-  const reference = await generateInvoiceReference(values.invoice_date)
+  const reference = values.reference?.trim() || await generateInvoiceReference(values.invoice_date)
   const uploaded = file ? await uploadInvoiceFile(reference, file) : null
 
   const { data, error } = await supabase.schema('stock')
@@ -118,11 +118,13 @@ export async function updateInvoice(id: string, values: InvoiceFormValues, profi
   const current = await getInvoice(id)
   if (['payee', 'cloturee', 'annulee'].includes(current.status)) throw new Error('Cette facture ne peut plus etre modifiee')
   validateInvoice(values)
+  const reference = values.reference?.trim() || current.reference
   const uploaded = file ? await uploadInvoiceFile(current.reference, file) : null
 
   const { error } = await supabase.schema('stock')
     .from('invoices')
     .update({
+      reference,
       supplier_id: values.supplier_id,
       invoice_number: values.invoice_number.trim(),
       invoice_date: values.invoice_date,

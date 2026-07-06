@@ -113,6 +113,7 @@ export const invoiceItemSchema = z.object({
 })
 
 export const invoiceSchema = z.object({
+  reference: z.string().optional(),
   supplier_id: z.string().min(1, 'Fournisseur obligatoire'),
   invoice_number: z.string().min(1, 'Numero de facture obligatoire'),
   invoice_date: z.string().min(1, 'Date de facture obligatoire'),

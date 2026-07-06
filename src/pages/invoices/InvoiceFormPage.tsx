@@ -15,6 +15,7 @@ import type { Supplier } from '../../lib/suppliers'
 const today = new Date().toISOString().slice(0, 10)
 
 const emptyForm: InvoiceFormValues = {
+  reference: '',
   supplier_id: '',
   invoice_number: '',
   invoice_date: today,
@@ -80,6 +81,7 @@ export function InvoiceFormPage() {
     if (id) {
       const invoice = await getInvoice(id)
       setValues({
+        reference: invoice.reference,
         supplier_id: invoice.supplier_id,
         invoice_number: invoice.invoice_number,
         invoice_date: invoice.invoice_date,
@@ -144,8 +146,12 @@ export function InvoiceFormPage() {
       )}
 
       <section className="surface grid gap-4 p-5 md:grid-cols-2">
+        <label className="block">
+          <span className="field-label">Numero facture interne</span>
+          <input value={values.reference ?? ''} onChange={(event) => setValues((current) => ({ ...current, reference: event.target.value }))} className="input mt-2" placeholder="Laisser vide pour generer automatiquement" />
+        </label>
         <label className="block"><span className="field-label">Fournisseur</span><select value={values.supplier_id} onChange={(event) => setValues((current) => ({ ...current, supplier_id: event.target.value }))} className="input mt-2"><option value="">Selectionner</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
-        <label className="block"><span className="field-label">Numero facture</span><input value={values.invoice_number} onChange={(event) => setValues((current) => ({ ...current, invoice_number: event.target.value }))} className="input mt-2" /></label>
+        <label className="block"><span className="field-label">Numero facture fournisseur</span><input value={values.invoice_number} onChange={(event) => setValues((current) => ({ ...current, invoice_number: event.target.value }))} className="input mt-2" /></label>
         <label className="block"><span className="field-label">Date facture</span><input type="date" value={values.invoice_date} onChange={(event) => setValues((current) => ({ ...current, invoice_date: event.target.value }))} className="input mt-2" /></label>
         <label className="block"><span className="field-label">Date echeance</span><input type="date" value={values.due_date} onChange={(event) => setValues((current) => ({ ...current, due_date: event.target.value }))} className="input mt-2" /></label>
         <label className="block"><span className="field-label">Montant HT</span><input type="number" value={values.amount_ht} onChange={(event) => setValues((current) => ({ ...current, amount_ht: Number(event.target.value) }))} className="input mt-2" /></label>
