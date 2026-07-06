@@ -68,7 +68,7 @@ export async function listInvoiceableReceptions() {
 
   let query = supabase.schema('stock')
     .from('receptions')
-    .select('*, suppliers(*), reception_items(*, articles(id, name, families(id, name)), units(id, name, abbreviation))')
+    .select('*, suppliers(*), reception_items(*, articles(id, name, families(id, name)), units:units!reception_items_unit_id_fkey(id, name, abbreviation))')
     .in('status', ['validee', 'validee_avec_anomalies', 'entree_stock'])
     .order('reception_date', { ascending: false })
   if (alreadyInvoicedIds.length > 0) query = query.not('id', 'in', `(${alreadyInvoicedIds.join(',')})`)
