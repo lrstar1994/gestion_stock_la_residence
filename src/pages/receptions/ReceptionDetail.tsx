@@ -46,7 +46,7 @@ export function ReceptionDetail() {
 
   const submit = async () => {
     await submitReception(reception.id, profile?.id)
-    toast.success(hasAnomalies ? 'Réception validée avec succès' : 'Entrée en stock effectuée avec succès')
+    toast.success(reception.is_historical ? 'Reception historique validee sans entree en stock' : hasAnomalies ? 'Réception validée avec succès' : 'Entrée en stock effectuée avec succès')
     await load()
   }
 
@@ -117,6 +117,7 @@ export function ReceptionDetail() {
 
       <section className="surface grid gap-4 p-5 md:grid-cols-2">
         <InfoFlat label="Localisation" value={reception.locations?.name || '-'} />
+        <InfoFlat label="Mode" value={reception.is_historical ? 'Historique sans entree en stock' : 'Reception normale'} />
         <InfoFlat label="Receptionnaire" value={reception.receiver?.full_name || '-'} />
         {reception.purchase_orders ? <InfoLink label="Commande associee" value={reception.purchase_orders.reference} to={`/purchase-orders/${reception.purchase_order_id}`} /> : <InfoFlat label="Commande associee" value="-" />}
         {reception.cash_purchases ? <InfoLink label="Achat espece associe" value={reception.cash_purchases.reference} to={`/cash-purchases/${reception.cash_purchase_id}`} /> : <InfoFlat label="Achat espece associe" value="-" />}
@@ -236,9 +237,10 @@ export function ReceptionDetail() {
         {canSubmit && <button type="button" onClick={submit} className="btn-primary"><Send className="mr-2 h-4 w-4" /> Soumettre / valider</button>}
         {canDirectionValidate && <button type="button" onClick={validate} className="btn-primary"><CheckCircle className="mr-2 h-4 w-4" /> Valider</button>}
         {canDirectionValidate && <button type="button" onClick={refuse} className="btn-secondary text-red-700"><XCircle className="mr-2 h-4 w-4" /> Refuser</button>}
-        {reception.status === 'validee' && <p className="text-sm font-semibold text-blue-800">Mouvement d'entree en stock cree en attente du module Stock.</p>}
-        {reception.status === 'validee_avec_anomalies' && <p className="text-sm font-semibold text-orange-800">Mouvement d'entree en stock cree avec anomalies en attente du module Stock.</p>}
-        {reception.status === 'entree_stock' && <p className="text-sm font-semibold text-emerald-800">Entree en stock effectuee avec succes.</p>}
+        {reception.is_historical && ['validee', 'validee_avec_anomalies'].includes(reception.status) && <p className="text-sm font-semibold text-amber-800">Reception historique validee : aucune entree en stock n'a ete generee.</p>}
+        {!reception.is_historical && reception.status === 'validee' && <p className="text-sm font-semibold text-blue-800">Mouvement d'entree en stock cree en attente du module Stock.</p>}
+        {!reception.is_historical && reception.status === 'validee_avec_anomalies' && <p className="text-sm font-semibold text-orange-800">Mouvement d'entree en stock cree avec anomalies en attente du module Stock.</p>}
+        {!reception.is_historical && reception.status === 'entree_stock' && <p className="text-sm font-semibold text-emerald-800">Entree en stock effectuee avec succes.</p>}
       </section>
 
       <section className="surface p-5">

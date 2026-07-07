@@ -25,6 +25,7 @@ const emptyForm: ReceptionFormValues = {
   comment: '',
   purchase_order_id: '',
   cash_purchase_id: '',
+  is_historical: false,
   items: [],
 }
 
@@ -153,6 +154,7 @@ export function ReceptionFormPage() {
         comment: reception.comment ?? '',
         purchase_order_id: reception.purchase_order_id ?? '',
         cash_purchase_id: reception.cash_purchase_id ?? '',
+        is_historical: Boolean(reception.is_historical),
         items: reception.reception_items?.map((item) => ({
           article_id: item.article_id,
           quantity_ordered: Number(item.quantity_ordered ?? 0),
@@ -357,6 +359,13 @@ export function ReceptionFormPage() {
         <label className="block"><span className="field-label">Numero facture/recu</span><input value={values.invoice_number} onChange={(event) => setValues((current) => ({ ...current, invoice_number: event.target.value }))} className="input mt-2" /></label>
         <label className="block"><span className="field-label">Date facture</span><input type="date" value={values.invoice_date} onChange={(event) => setValues((current) => ({ ...current, invoice_date: event.target.value }))} className="input mt-2" /></label>
         <label className="block"><span className="field-label">Commentaire</span><input value={values.comment} onChange={(event) => setValues((current) => ({ ...current, comment: event.target.value }))} className="input mt-2" /></label>
+        <label className="flex gap-3 rounded-md border border-amber-200 bg-amber-50 p-4 md:col-span-2">
+          <input type="checkbox" checked={values.is_historical} onChange={(event) => setValues((current) => ({ ...current, is_historical: event.target.checked }))} className="mt-1 h-4 w-4" />
+          <span>
+            <span className="block font-bold text-amber-900">Reception historique sans entree en stock</span>
+            <span className="mt-1 block text-sm text-amber-800">A utiliser uniquement pour integrer d'anciennes factures deja traitees avant l'utilisation du logiciel. Cette reception pourra etre facturee, mais ne modifiera pas le stock.</span>
+          </span>
+        </label>
       </section>
 
       <section className="surface overflow-hidden">

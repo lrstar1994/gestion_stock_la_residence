@@ -30,15 +30,5 @@ ALTER TABLE sale_items
   ADD COLUMN IF NOT EXISTS total DECIMAL(14, 2) GENERATED ALWAYS AS ((quantity - quantity_offered) * unit_price) STORED,
   ADD COLUMN IF NOT EXISTS total_after_discount DECIMAL(14, 2) GENERATED ALWAYS AS ((((quantity - quantity_offered) * unit_price) - discount)) STORED;
 
-UPDATE sale_items item
-SET
-  unit_stock_id = COALESCE(item.unit_stock_id, article.unit_id),
-  unit_display_id = COALESCE(item.unit_display_id, article.unit_id),
-  conversion_factor = COALESCE(item.conversion_factor, 1),
-  quantity_stock = COALESCE(item.quantity_stock, item.quantity)
-FROM articles article
-WHERE item.article_id = article.id
-AND item.product_type = 'produit_brut';
-
 CREATE INDEX IF NOT EXISTS idx_sale_items_unit_display_id ON sale_items(unit_display_id);
 CREATE INDEX IF NOT EXISTS idx_sale_items_unit_stock_id ON sale_items(unit_stock_id);

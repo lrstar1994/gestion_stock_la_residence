@@ -274,6 +274,7 @@ export async function receivePurchaseOrder(id: string, items: PurchaseOrderItem[
     comment: `Reception automatique creee depuis la commande ${order.reference}`,
     purchase_order_id: order.id,
     cash_purchase_id: '',
+    is_historical: false,
     items: receptionItems,
   }, profileId)
 

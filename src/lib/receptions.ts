@@ -111,6 +111,7 @@ export type Reception = {
   comment: string | null
   purchase_order_id: string | null
   cash_purchase_id: string | null
+  is_historical: boolean
   validated_by: string | null
   validated_at: string | null
   validation_comment: string | null
@@ -163,6 +164,7 @@ export const receptionSchema = z.object({
   comment: z.string().optional(),
   purchase_order_id: z.string().optional(),
   cash_purchase_id: z.string().optional(),
+  is_historical: z.boolean().default(false),
   items: z.array(receptionItemSchema).min(1, 'Veuillez ajouter au moins un article'),
 })
 

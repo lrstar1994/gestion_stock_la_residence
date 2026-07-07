@@ -116,6 +116,7 @@ export async function createReception(values: ReceptionFormValues, profileId?: s
       comment: cleanNullable(values.comment),
       purchase_order_id: values.purchase_order_id || null,
       cash_purchase_id: values.cash_purchase_id || null,
+      is_historical: values.is_historical,
       total_amount: total,
       status: 'brouillon',
       created_by: profileId,
@@ -147,6 +148,7 @@ export async function updateReception(id: string, values: ReceptionFormValues, p
       comment: cleanNullable(values.comment),
       purchase_order_id: values.purchase_order_id || null,
       cash_purchase_id: values.cash_purchase_id || null,
+      is_historical: values.is_historical,
       total_amount: total,
       updated_by: profileId,
     })
@@ -304,6 +306,10 @@ export async function submitReception(id: string, profileId?: string) {
   if (error) throw error
   await addReceptionHistory(id, status === 'validee' ? 'validation' : 'soumission', status === 'validee' ? 'Reception validee automatiquement' : 'Reception soumise a validation', profileId)
   if (status === 'validee') {
+    if (reception.is_historical) {
+      await addReceptionHistory(id, 'historique', 'Reception historique validee sans entree en stock', profileId)
+      return
+    }
     await applyReceptionSideEffects(id, profileId)
     const integrated = profileId ? await integratePendingReceptionMovements(profileId) : 0
     await addReceptionHistory(id, 'stock_pending', integrated > 0 ? 'Entree en stock effectuee avec succes' : 'Mouvement stock en attente cree', profileId)
@@ -319,6 +325,10 @@ export async function validateReception(id: string, profileId?: string, comment?
     .update({ status, validated_by: profileId, validated_at: new Date().toISOString(), validation_comment: cleanNullable(comment), updated_by: profileId })
     .eq('id', id)
   if (error) throw error
+  if (reception.is_historical) {
+    await addReceptionHistory(id, 'validation', status === 'validee_avec_anomalies' ? 'Reception historique validee avec anomalies sans entree en stock' : 'Reception historique validee sans entree en stock', profileId)
+    return
+  }
   await applyReceptionSideEffects(id, profileId)
   const integrated = profileId ? await integratePendingReceptionMovements(profileId) : 0
   await addReceptionHistory(id, 'validation', status === 'validee_avec_anomalies' ? 'Reception validee avec anomalies' : 'Reception validee', profileId)
