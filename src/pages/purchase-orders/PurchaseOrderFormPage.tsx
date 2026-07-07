@@ -1,7 +1,7 @@
 import { Plus, Save, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { listArticles, listUnits } from '../../api/modules/catalog.api'
 import { createPurchaseOrder, getPurchaseGroupNeeds, getPurchaseOrder, listOrderablePurchaseGroups, updatePurchaseOrder } from '../../api/modules/purchaseOrders.api'
 import { listSuppliers } from '../../api/modules/suppliers.api'
@@ -27,6 +27,13 @@ const emptyForm: PurchaseOrderFormValues = {
   items: [],
 }
 
+const localDraftKey = 'la-residence-purchase-order-draft'
+
+type LocalPurchaseOrderDraft = {
+  values: PurchaseOrderFormValues
+  savedAt: string
+}
+
 export function PurchaseOrderFormPage() {
   const { id } = useParams()
   const [searchParams] = useSearchParams()
@@ -38,6 +45,8 @@ export function PurchaseOrderFormPage() {
   const [units, setUnits] = useState<Unit[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [groups, setGroups] = useState<PurchaseGroup[]>([])
+  const [draftReady, setDraftReady] = useState(false)
+  const [localDraftSavedAt, setLocalDraftSavedAt] = useState<string | null>(null)
   const total = useMemo(() => calculateOrderTotal(values.items), [values.items])
 
   const load = useCallback(async () => {
@@ -90,13 +99,53 @@ export function PurchaseOrderFormPage() {
             comment: need.comment ?? '',
           })),
         }))
+      } else {
+        const savedDraft = readLocalDraft()
+        if (savedDraft && window.confirm(`Un brouillon de commande existe depuis le ${new Date(savedDraft.savedAt).toLocaleString('fr-FR')}. Voulez-vous le reprendre ?`)) {
+          setValues(savedDraft.values)
+          setLocalDraftSavedAt(savedDraft.savedAt)
+        }
       }
     }
   }, [id, searchParams])
 
   useEffect(() => {
-    load().catch(() => toast.error('Impossible de charger le formulaire.'))
+    load()
+      .catch(() => toast.error('Impossible de charger le formulaire.'))
+      .finally(() => setDraftReady(true))
   }, [load])
+
+  useEffect(() => {
+    if (isEdit || !draftReady) return
+    if (!isMeaningfulDraft(values)) return
+
+    const savedAt = new Date().toISOString()
+    localStorage.setItem(localDraftKey, JSON.stringify({ values, savedAt }))
+    setLocalDraftSavedAt(savedAt)
+  }, [draftReady, isEdit, values])
+
+  useEffect(() => {
+    if (isEdit || !isMeaningfulDraft(values)) return
+
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+
+    window.addEventListener('beforeunload', warnBeforeUnload)
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload)
+  }, [isEdit, values])
+
+  const clearLocalDraft = () => {
+    localStorage.removeItem(localDraftKey)
+    setLocalDraftSavedAt(null)
+    toast.success('Brouillon local efface')
+  }
+
+  const cancel = () => {
+    if (!isEdit && isMeaningfulDraft(values) && !window.confirm('Quitter le formulaire ? Le brouillon local restera disponible pour reprise.')) return
+    navigate('/purchase-orders')
+  }
 
   const selectGroup = async (groupId: string) => {
     const group = groups.find((item) => item.id === groupId)
@@ -162,6 +211,8 @@ export function PurchaseOrderFormPage() {
         navigate(`/purchase-orders/${id}`)
       } else {
         const orderId = await createPurchaseOrder(values, profile?.id)
+        localStorage.removeItem(localDraftKey)
+        setLocalDraftSavedAt(null)
         toast.success('Commande creee avec succes')
         navigate(`/purchase-orders/${orderId}`)
       }
@@ -175,10 +226,21 @@ export function PurchaseOrderFormPage() {
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div><p className="eyebrow">Commande fournisseur</p><h1 className="page-title mt-2">{isEdit ? 'Modifier la commande' : 'Nouvelle commande'}</h1></div>
         <div className="flex gap-2">
-          <Link to="/purchase-orders" className="btn-secondary">Annuler</Link>
-          <button type="submit" className="btn-primary"><Save className="mr-2 h-4 w-4" /> Enregistrer</button>
+          <button type="button" onClick={cancel} className="btn-secondary">Annuler</button>
+          <button type="submit" className="btn-primary"><Save className="mr-2 h-4 w-4" /> Enregistrer en brouillon</button>
         </div>
       </header>
+
+      {!isEdit && (
+        <section className="surface flex flex-col gap-3 p-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+          <span>
+            {localDraftSavedAt
+              ? `Brouillon local sauvegarde le ${new Date(localDraftSavedAt).toLocaleString('fr-FR')}.`
+              : 'Le formulaire est sauvegarde automatiquement dans ce navigateur pendant la saisie.'}
+          </span>
+          {localDraftSavedAt && <button type="button" onClick={clearLocalDraft} className="btn-secondary">Effacer le brouillon local</button>}
+        </section>
+      )}
 
       {!isEdit && (
         <section className="surface p-5">
@@ -230,5 +292,33 @@ export function PurchaseOrderFormPage() {
         <span className="text-2xl font-black text-[#1E3A8A]">{total.toLocaleString('fr-FR')} Ar</span>
       </section>
     </form>
+  )
+}
+
+function readLocalDraft(): LocalPurchaseOrderDraft | null {
+  try {
+    const raw = localStorage.getItem(localDraftKey)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<LocalPurchaseOrderDraft>
+    if (!parsed.values || !parsed.savedAt) return null
+    return parsed as LocalPurchaseOrderDraft
+  } catch {
+    localStorage.removeItem(localDraftKey)
+    return null
+  }
+}
+
+function isMeaningfulDraft(values: PurchaseOrderFormValues) {
+  return Boolean(
+    values.supplier_id ||
+    values.supplier_reference ||
+    values.payment_terms ||
+    values.delivery_mode ||
+    values.comment ||
+    values.group_id ||
+    values.need_ids.length > 0 ||
+    values.items.length > 0 ||
+    values.order_date !== today ||
+    values.delivery_date !== today,
   )
 }
