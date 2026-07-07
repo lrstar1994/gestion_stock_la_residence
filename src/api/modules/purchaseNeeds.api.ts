@@ -29,6 +29,26 @@ function cleanNullable(value?: string) {
   return trimmed ? trimmed : null
 }
 
+const DEFAULT_VAT_RATE = 20
+
+function calculateTaxValues(values: PurchaseNeedFormValues) {
+  const inputAmount = Number(values.price_input_amount ?? values.estimated_price ?? 0)
+  const vatRate = Number(values.vat_rate ?? DEFAULT_VAT_RATE)
+  const isTaxExcluded = Boolean(values.price_input_is_tax_excluded)
+  const estimatedPriceHt = isTaxExcluded ? inputAmount : inputAmount / (1 + vatRate / 100)
+  const estimatedPriceTtc = isTaxExcluded ? inputAmount * (1 + vatRate / 100) : inputAmount
+  const estimatedVatAmount = Math.max(0, estimatedPriceTtc - estimatedPriceHt)
+
+  return {
+    inputAmount,
+    vatRate,
+    isTaxExcluded,
+    estimatedPriceHt,
+    estimatedPriceTtc,
+    estimatedVatAmount,
+  }
+}
+
 export async function listPurchaseNeedsGlobal(filters: PurchaseNeedFilters = {}) {
   const page = filters.page ?? 1
   const pageSize = filters.pageSize ?? 20
@@ -64,7 +84,8 @@ export async function listPurchaseNeedsGlobal(filters: PurchaseNeedFilters = {})
 }
 
 export async function createPurchaseNeed(values: PurchaseNeedFormValues, profileId: string) {
-  const total = values.quantity * Number(values.estimated_price ?? 0)
+  const tax = calculateTaxValues(values)
+  const total = values.quantity * tax.estimatedPriceHt
   const { error } = await supabase.schema('stock').from('purchase_needs').insert({
     article_id: values.article_id,
     quantity: values.quantity,
@@ -72,7 +93,12 @@ export async function createPurchaseNeed(values: PurchaseNeedFormValues, profile
     unit_id: values.unit_id,
     origin: values.origin,
     urgency: values.urgency,
-    estimated_price: values.estimated_price ?? null,
+    estimated_price: tax.estimatedPriceHt,
+    price_input_amount: tax.inputAmount,
+    price_input_is_tax_excluded: tax.isTaxExcluded,
+    vat_rate: tax.vatRate,
+    estimated_vat_amount: tax.estimatedVatAmount,
+    estimated_price_ttc: tax.estimatedPriceTtc,
     estimated_cost: total,
     budget: values.budget ?? null,
     requested_date: values.requested_date || null,
@@ -91,7 +117,8 @@ export async function updatePurchaseNeed(id: string, values: PurchaseNeedFormVal
   if (need.status === 'valide') throw new Error('Ce besoin a deja ete valide')
   if (need.status === 'regroupe') throw new Error('Ce besoin a deja ete regroupe')
 
-  const total = values.quantity * Number(values.estimated_price ?? 0)
+  const tax = calculateTaxValues(values)
+  const total = values.quantity * tax.estimatedPriceHt
   const { error } = await supabase.schema('stock')
     .from('purchase_needs')
     .update({
@@ -101,7 +128,12 @@ export async function updatePurchaseNeed(id: string, values: PurchaseNeedFormVal
       unit_id: values.unit_id,
       origin: values.origin,
       urgency: values.urgency,
-      estimated_price: values.estimated_price ?? null,
+      estimated_price: tax.estimatedPriceHt,
+      price_input_amount: tax.inputAmount,
+      price_input_is_tax_excluded: tax.isTaxExcluded,
+      vat_rate: tax.vatRate,
+      estimated_vat_amount: tax.estimatedVatAmount,
+      estimated_price_ttc: tax.estimatedPriceTtc,
       estimated_cost: total,
       budget: values.budget ?? null,
       requested_date: values.requested_date || null,

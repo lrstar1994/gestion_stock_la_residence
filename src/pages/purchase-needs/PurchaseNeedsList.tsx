@@ -199,7 +199,10 @@ export function PurchaseNeedsList() {
 
               <div>
                 <p className="text-sm font-bold text-slate-950">{Number(need.quantity ?? need.quantity_needed).toLocaleString('fr-FR')} {need.units?.abbreviation}</p>
-                <p className="mt-1 text-xs text-slate-500">Prix {Number(need.estimated_price ?? 0).toLocaleString('fr-FR')} Ar</p>
+                <p className="mt-1 text-xs text-slate-500">Prix HT {Number(need.estimated_price ?? 0).toLocaleString('fr-FR')} Ar</p>
+                {need.price_input_is_tax_excluded === false && (
+                  <p className="mt-1 text-xs text-slate-500">Saisi TTC {Number(need.price_input_amount ?? need.estimated_price_ttc ?? 0).toLocaleString('fr-FR')} Ar</p>
+                )}
               </div>
 
               <div>

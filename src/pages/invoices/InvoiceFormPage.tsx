@@ -122,6 +122,7 @@ export function InvoiceFormPage() {
         toast.success('Facture mise a jour avec succes')
         navigate(`/invoices/${id}`)
       } else {
+        if (!file) throw new Error('Veuillez ajouter une piece jointe')
         const invoiceId = await createInvoice(payload, profile?.id, file)
         toast.success('Facture creee avec succes')
         navigate(`/invoices/${invoiceId}`)
@@ -157,7 +158,7 @@ export function InvoiceFormPage() {
         <label className="block"><span className="field-label">Montant HT</span><input type="number" value={values.amount_ht} onChange={(event) => setValues((current) => ({ ...current, amount_ht: Number(event.target.value) }))} className="input mt-2" /></label>
         <label className="block"><span className="field-label">TVA</span><input type="number" value={values.amount_tva} onChange={(event) => setValues((current) => ({ ...current, amount_tva: Number(event.target.value) }))} className="input mt-2" /></label>
         <label className="block"><span className="field-label">Mode paiement prevu</span><select value={values.payment_mode ?? ''} onChange={(event) => setValues((current) => ({ ...current, payment_mode: event.target.value as InvoiceFormValues['payment_mode'] || undefined }))} className="input mt-2"><option value="">Non defini</option>{paymentModes.map((mode) => <option key={mode} value={mode}>{paymentModeLabels[mode]}</option>)}</select></label>
-        <label className="block"><span className="field-label">Piece jointe</span><label className="btn-secondary mt-2 cursor-pointer"><Upload className="mr-2 h-4 w-4" /> {file?.name ?? 'Choisir fichier'}<input type="file" accept="image/*,.pdf" onChange={(event) => setFile(event.target.files?.[0])} className="hidden" /></label></label>
+        <label className="block"><span className="field-label">Piece jointe obligatoire</span><label className="btn-secondary mt-2 cursor-pointer"><Upload className="mr-2 h-4 w-4" /> {file?.name ?? 'Choisir fichier'}<input type="file" accept="image/*,.pdf" required={!isEdit} onChange={(event) => setFile(event.target.files?.[0])} className="hidden" /></label>{!isEdit && <p className="mt-1 text-xs font-semibold text-amber-700">Obligatoire pour creer la facture.</p>}</label>
         <label className="block md:col-span-2"><span className="field-label">Commentaire</span><textarea value={values.comment} onChange={(event) => setValues((current) => ({ ...current, comment: event.target.value }))} className="input mt-2 min-h-24" /></label>
       </section>
 

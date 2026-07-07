@@ -41,7 +41,7 @@ export function StockOutFormPage() {
       listEvents({ page: 1, pageSize: 100, status: 'en_production' }),
     ])
       .then(([articleResult, loadedLocations, eventResult]) => {
-        setArticles(articleResult.articles)
+        setArticles([...articleResult.articles].sort((left, right) => left.name.localeCompare(right.name, 'fr', { sensitivity: 'base' })))
         setLocations(loadedLocations)
         setEvents(eventResult.events)
         if (loadedLocations[0]?.id) getUnconfirmedInitialInventoryCount(loadedLocations[0].id).then(setUnconfirmedInitial).catch(() => undefined)

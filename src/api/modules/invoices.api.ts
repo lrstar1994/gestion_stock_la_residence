@@ -79,6 +79,7 @@ export async function listInvoiceableReceptions() {
 
 export async function createInvoice(values: InvoiceFormValues, profileId?: string, file?: File) {
   validateInvoice(values)
+  if (!file) throw new Error('Veuillez ajouter une piece jointe')
   const reference = values.reference?.trim() || await generateInvoiceReference(values.invoice_date)
   const uploaded = file ? await uploadInvoiceFile(reference, file) : null
 

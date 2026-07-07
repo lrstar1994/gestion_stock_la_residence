@@ -47,6 +47,11 @@ export type PurchaseNeedGlobal = {
   origin: NeedOrigin
   urgency: NeedUrgency
   estimated_price: number | null
+  price_input_amount: number | null
+  price_input_is_tax_excluded: boolean | null
+  vat_rate: number | null
+  estimated_vat_amount: number | null
+  estimated_price_ttc: number | null
   estimated_cost: number
   budget: number | null
   requested_date: string | null
@@ -90,6 +95,9 @@ export const purchaseNeedSchema = z.object({
   origin: z.enum(needOrigins),
   urgency: z.enum(needUrgencies),
   estimated_price: z.number().min(0).optional(),
+  price_input_amount: z.number().min(0).optional(),
+  price_input_is_tax_excluded: z.boolean().optional(),
+  vat_rate: z.number().min(0).optional(),
   budget: z.number().min(0, 'Le budget ne peut pas etre negatif').optional(),
   requested_date: z.string().optional(),
   comment: z.string().optional(),

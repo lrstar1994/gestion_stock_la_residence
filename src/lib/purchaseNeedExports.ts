@@ -26,7 +26,12 @@ function rowsFromNeeds(needs: PurchaseNeedGlobal[]) {
     Unite: need.units?.abbreviation || need.units?.name || '',
     Origine: needOriginLabels[need.origin],
     Urgence: needUrgencyLabels[need.urgency],
-    'Prix estimatif': Number(need.estimated_price ?? 0),
+    'Prix saisi': Number(need.price_input_amount ?? need.estimated_price ?? 0),
+    'Prix saisi HT': need.price_input_is_tax_excluded === false ? 'Non' : 'Oui',
+    'TVA %': Number(need.vat_rate ?? 20),
+    'Prix retenu HT': Number(need.estimated_price ?? 0),
+    'TVA estimee': Number(need.estimated_vat_amount ?? 0),
+    'Prix TTC estime': Number(need.estimated_price_ttc ?? 0),
     Budget: Number(need.budget ?? 0),
     'Cout estime': Number(need.estimated_cost ?? 0),
     Statut: needStatusLabels[need.status],
@@ -38,7 +43,7 @@ function rowsFromNeeds(needs: PurchaseNeedGlobal[]) {
 
 export function exportPurchaseNeedsGlobalToCsv(needs: PurchaseNeedGlobal[]) {
   const rows = rowsFromNeeds(needs)
-  const headers = Object.keys(rows[0] ?? { Article: '', Famille: '', Quantite: '', Unite: '', Origine: '', Urgence: '', 'Prix estimatif': '', Budget: '', 'Cout estime': '', Statut: '', Fournisseur: '', Demandeur: '', 'Date creation': '' })
+  const headers = Object.keys(rows[0] ?? { Article: '', Famille: '', Quantite: '', Unite: '', Origine: '', Urgence: '', 'Prix saisi': '', 'Prix saisi HT': '', 'TVA %': '', 'Prix retenu HT': '', 'TVA estimee': '', 'Prix TTC estime': '', Budget: '', 'Cout estime': '', Statut: '', Fournisseur: '', Demandeur: '', 'Date creation': '' })
   const csv = [headers.map(csvEscape).join(';'), ...rows.map((row) => headers.map((header) => csvEscape(row[header as keyof typeof row])).join(';'))].join('\n')
   downloadBlob(`\uFEFF${csv}`, `besoins-achat-${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8')
 }
@@ -46,7 +51,7 @@ export function exportPurchaseNeedsGlobalToCsv(needs: PurchaseNeedGlobal[]) {
 export function exportPurchaseNeedsGlobalToExcel(needs: PurchaseNeedGlobal[]) {
   const workbook = XLSX.utils.book_new()
   const worksheet = XLSX.utils.json_to_sheet(rowsFromNeeds(needs))
-  worksheet['!cols'] = [{ wch: 28 }, { wch: 18 }, { wch: 12 }, { wch: 10 }, { wch: 18 }, { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 24 }, { wch: 22 }, { wch: 16 }]
+  worksheet['!cols'] = [{ wch: 28 }, { wch: 18 }, { wch: 12 }, { wch: 10 }, { wch: 18 }, { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 24 }, { wch: 22 }, { wch: 16 }]
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Besoins achat')
   XLSX.writeFile(workbook, `besoins-achat-${new Date().toISOString().slice(0, 10)}.xlsx`)
 }
