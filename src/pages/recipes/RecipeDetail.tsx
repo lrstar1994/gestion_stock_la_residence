@@ -134,8 +134,8 @@ export function RecipeDetail() {
       </section>
 
       <section className="surface overflow-hidden">
-        <div className="grid grid-cols-[1fr_150px_150px_150px_180px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-          <span>Article</span><span>Quantite</span><span>Prix historique</span><span>Cout</span><span>Cout actuel</span>
+        <div className="grid grid-cols-[1fr_160px_170px_150px_150px_210px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+          <span>Article</span><span>Quantite utilisee</span><span>Cout historique utilise</span><span>Cout ligne fiche</span><span>Ecart actuel</span><span>Cout matiere interne actuel</span>
         </div>
         <div className="divide-y divide-slate-200">
           {recipe.recipe_ingredients?.map((ingredient) => {
@@ -145,7 +145,7 @@ export function RecipeDetail() {
             const obsolete = Math.abs(gap) >= 15
 
             return (
-              <div key={ingredient.id} className="grid grid-cols-[1fr_150px_150px_150px_180px] gap-4 px-5 py-3 text-sm">
+              <div key={ingredient.id} className="grid grid-cols-[1fr_160px_170px_150px_150px_210px] gap-4 px-5 py-3 text-sm">
                 <span className="font-semibold">{ingredient.articles?.name || ingredient.imported_name}</span>
                 <span>
                   {Number(ingredient.quantity_display ?? ingredient.quantity).toLocaleString('fr-FR')} {ingredient.display_unit?.abbreviation || ingredient.units?.abbreviation || ingredient.unit_name}
@@ -154,6 +154,9 @@ export function RecipeDetail() {
                 </span>
                 <span>{historicalCost.toLocaleString('fr-FR')} Ar</span>
                 <span>{Number(ingredient.total_cost).toLocaleString('fr-FR')} Ar</span>
+                <span className={obsolete ? 'font-bold text-amber-700' : 'text-slate-600'}>
+                  {currentCost && historicalCost > 0 ? `${gap > 0 ? '+' : ''}${gap.toFixed(1)} %` : '-'}
+                </span>
                 <span>
                   {currentCost ? `${currentCost.toLocaleString('fr-FR')} Ar` : '-'}
                   {obsolete && <span className="mt-1 block rounded-full bg-amber-50 px-2 py-1 text-xs font-bold text-amber-800">Cout potentiellement obsolete ({gap.toFixed(1)}%)</span>}
