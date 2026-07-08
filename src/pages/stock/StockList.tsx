@@ -114,7 +114,7 @@ export function StockList() {
 
       <section className="surface overflow-hidden">
         <div className="hidden grid-cols-[1fr_130px_1.2fr_110px_120px_120px_110px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
-          <span>Article</span><span>Total</span><span>Localisations</span><span>Seuil</span><span>Dernier prix</span><span>Prix moyen</span><span>Statut</span>
+          <span>Article</span><span>Quantite totale</span><span>Localisations</span><span>Seuil</span><span>Dernier cout connu</span><span>Cout moyen stock</span><span>Statut</span>
         </div>
         <div className="divide-y divide-slate-200">
           {rows.map((row) => (

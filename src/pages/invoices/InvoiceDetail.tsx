@@ -87,31 +87,31 @@ export function InvoiceDetail() {
       </header>
 
       <section className="grid gap-4 md:grid-cols-4">
-        <Metric label="Montant TTC" value={`${Number(invoice.amount_ttc).toLocaleString('fr-FR')} Ar`} />
-        <Metric label="Montant paye" value={`${Number(invoice.amount_paid).toLocaleString('fr-FR')} Ar`} />
-        <Metric label="Solde restant" value={`${Number(invoice.amount_remaining).toLocaleString('fr-FR')} Ar`} />
+        <Metric label="Montant TTC facture" value={`${Number(invoice.amount_ttc).toLocaleString('fr-FR')} Ar`} />
+        <Metric label="Montant deja paye" value={`${Number(invoice.amount_paid).toLocaleString('fr-FR')} Ar`} />
+        <Metric label="Solde restant a payer" value={`${Number(invoice.amount_remaining).toLocaleString('fr-FR')} Ar`} />
         <Metric label="Echeance" value={new Date(invoice.due_date).toLocaleDateString('fr-FR')} />
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">
         <div className="surface p-5">
-          <p className="eyebrow">Lecture comptable / fiscale</p>
+          <p className="eyebrow">Lecture comptable et fiscale</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <Info label="HT" value={`${Number(invoice.amount_ht ?? 0).toLocaleString('fr-FR')} Ar`} />
-            <Info label="TVA" value={`${Number(invoice.amount_tva ?? 0).toLocaleString('fr-FR')} Ar`} />
-            <Info label="TTC" value={`${Number(invoice.amount_ttc ?? 0).toLocaleString('fr-FR')} Ar`} />
+            <Info label="Montant HT facture" value={`${Number(invoice.amount_ht ?? 0).toLocaleString('fr-FR')} Ar`} />
+            <Info label="Montant TVA facture" value={`${Number(invoice.amount_tva ?? 0).toLocaleString('fr-FR')} Ar`} />
+            <Info label="Montant TTC facture" value={`${Number(invoice.amount_ttc ?? 0).toLocaleString('fr-FR')} Ar`} />
             <Info label="TVA recuperable" value={`${Number(invoice.recoverable_vat_amount ?? 0).toLocaleString('fr-FR')} Ar`} />
             <Info label="TVA non recuperable" value={`${Number(invoice.non_recoverable_vat_amount ?? 0).toLocaleString('fr-FR')} Ar`} />
             <Info label="Charge declarative" value={`${Number(invoice.declared_extra_tax_amount ?? 0).toLocaleString('fr-FR')} Ar`} />
           </div>
         </div>
         <div className="surface p-5">
-          <p className="eyebrow">Lecture gestion interne</p>
+          <p className="eyebrow">Lecture cout matiere interne</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <Info label="Mode fiscal" value={invoice.invoice_tax_mode ? invoiceTaxModeLabels[invoice.invoice_tax_mode] : '-'} />
-            <Info label="Methode cout" value={invoice.effective_cost_method ? effectiveCostMethodLabels[invoice.effective_cost_method] : '-'} />
+            <Info label="Methode de cout interne" value={invoice.effective_cost_method ? effectiveCostMethodLabels[invoice.effective_cost_method] : '-'} />
             <Info label="Cout matiere interne" value={`${Number(invoice.effective_material_cost_total ?? invoice.amount_ht ?? 0).toLocaleString('fr-FR')} Ar`} />
-            <Info label="Source" value={invoice.effective_cost_source || '-'} />
+            <Info label="Source du cout" value={invoice.effective_cost_source || '-'} />
           </div>
           {invoice.effective_cost_note && <p className="mt-3 text-sm text-slate-600">{invoice.effective_cost_note}</p>}
         </div>
@@ -119,10 +119,10 @@ export function InvoiceDetail() {
 
       <section className="surface grid gap-4 p-5 md:grid-cols-2">
         <Info label="Fournisseur" value={invoice.suppliers?.name || '-'} />
-        <Info label="Numero facture" value={invoice.invoice_number} />
+        <Info label="Numero facture fournisseur" value={invoice.invoice_number} />
         <Info label="Date facture" value={new Date(invoice.invoice_date).toLocaleDateString('fr-FR')} />
-        <Info label="Mode paiement" value={invoice.payment_mode ? paymentModeLabels[invoice.payment_mode] : '-'} />
-        {invoice.receptions ? <InfoLink label="Reception liee" value={invoice.receptions.reference} to={`/receptions/${invoice.receptions.id}`} /> : <Info label="Reception liee" value="-" />}
+        <Info label="Mode de paiement prevu" value={invoice.payment_mode ? paymentModeLabels[invoice.payment_mode] : '-'} />
+        {invoice.receptions ? <InfoLink label="Reception rattachee" value={invoice.receptions.reference} to={`/receptions/${invoice.receptions.id}`} /> : <Info label="Reception rattachee" value="-" />}
         <Info label="Validation" value={invoice.validated_at ? `${new Date(invoice.validated_at).toLocaleString('fr-FR')} - ${invoice.validator?.full_name || ''}` : '-'} />
         {invoice.file_url && <a href={invoice.file_url} target="_blank" className="font-semibold text-[#1E3A8A]">Voir piece jointe : {invoice.file_name}</a>}
         {invoice.comment && <div className="md:col-span-2"><Info label="Commentaire" value={invoice.comment} /></div>}
@@ -130,9 +130,9 @@ export function InvoiceDetail() {
 
       {canManage && (
         <section className="surface flex flex-wrap gap-3 p-5">
-          {invoice.status === 'a_verifier' && <button type="button" onClick={validate} className="btn-primary"><CheckCircle className="mr-2 h-4 w-4" /> Valider</button>}
+          {invoice.status === 'a_verifier' && <button type="button" onClick={validate} className="btn-primary"><CheckCircle className="mr-2 h-4 w-4" /> Valider la facture</button>}
           {!['payee', 'cloturee', 'annulee'].includes(invoice.status) && <button type="button" onClick={contest} className="btn-secondary text-red-700"><XCircle className="mr-2 h-4 w-4" /> Contester</button>}
-          {invoice.status === 'payee' && <button type="button" onClick={close} className="btn-primary">Cloturer</button>}
+          {invoice.status === 'payee' && <button type="button" onClick={close} className="btn-primary">Cloturer la facture</button>}
         </section>
       )}
 
@@ -147,16 +147,16 @@ export function InvoiceDetail() {
 
       {canPay && Number(invoice.amount_remaining ?? 0) > 0 && ['validee', 'a_payer', 'partiellement_paye'].includes(invoice.status) && (
         <form onSubmit={pay} className="surface grid gap-3 p-5 md:grid-cols-[1fr_180px_180px_1fr_auto] md:items-end">
-          <label className="block"><span className="field-label">Montant paye</span><input type="number" value={payment.amount} onChange={(event) => setPayment((current) => ({ ...current, amount: Number(event.target.value) }))} className="input mt-2" /></label>
-          <label className="block"><span className="field-label">Mode</span><select value={payment.payment_mode} onChange={(event) => setPayment((current) => ({ ...current, payment_mode: event.target.value as typeof payment.payment_mode }))} className="input mt-2">{paymentModes.map((mode) => <option key={mode} value={mode}>{paymentModeLabels[mode]}</option>)}</select></label>
-          <label className="block"><span className="field-label">Date</span><input type="date" value={payment.payment_date} onChange={(event) => setPayment((current) => ({ ...current, payment_date: event.target.value }))} className="input mt-2" /></label>
-          <label className="block"><span className="field-label">Reference</span><input value={payment.payment_reference} onChange={(event) => setPayment((current) => ({ ...current, payment_reference: event.target.value }))} className="input mt-2" /></label>
-          <button type="submit" className="btn-primary">Payer</button>
+          <label className="block"><span className="field-label">Montant du paiement</span><input type="number" value={payment.amount} onChange={(event) => setPayment((current) => ({ ...current, amount: Number(event.target.value) }))} className="input mt-2" /></label>
+          <label className="block"><span className="field-label">Mode de paiement</span><select value={payment.payment_mode} onChange={(event) => setPayment((current) => ({ ...current, payment_mode: event.target.value as typeof payment.payment_mode }))} className="input mt-2">{paymentModes.map((mode) => <option key={mode} value={mode}>{paymentModeLabels[mode]}</option>)}</select></label>
+          <label className="block"><span className="field-label">Date de paiement</span><input type="date" value={payment.payment_date} onChange={(event) => setPayment((current) => ({ ...current, payment_date: event.target.value }))} className="input mt-2" /></label>
+          <label className="block"><span className="field-label">Reference paiement</span><input value={payment.payment_reference} onChange={(event) => setPayment((current) => ({ ...current, payment_reference: event.target.value }))} className="input mt-2" /></label>
+          <button type="submit" className="btn-primary">Enregistrer paiement</button>
         </form>
       )}
 
       <section className="surface overflow-hidden">
-        <div className="border-b border-slate-200 px-5 py-4"><h2 className="text-lg font-bold">Articles</h2></div>
+        <div className="border-b border-slate-200 px-5 py-4"><h2 className="text-lg font-bold">Articles factures et cout interne</h2></div>
         <div className="divide-y divide-slate-200">
           {invoice.invoice_items?.map((item) => (
             <div key={item.id} className="grid gap-3 px-5 py-4 md:grid-cols-[1fr_120px_130px_130px_160px] md:items-center">

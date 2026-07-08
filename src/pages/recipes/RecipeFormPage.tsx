@@ -215,7 +215,7 @@ export function RecipeFormPage() {
                   <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-[120px_170px_150px_160px_minmax(220px,1fr)_90px]">
                     <input {...form.register(`ingredients.${index}.quantity`, { valueAsNumber: true })} type="number" min="0" step="0.01" className="input min-w-0" placeholder="Quantite" />
                     <select {...form.register(`ingredients.${index}.unit_id`)} className="input min-w-0"><option value="">Unite</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name} ({unit.abbreviation})</option>)}</select>
-                    <input {...form.register(`ingredients.${index}.unit_price`, { valueAsNumber: true })} type="number" min="0" step="0.01" className="input min-w-0" placeholder="Prix unitaire" />
+                    <input {...form.register(`ingredients.${index}.unit_price`, { valueAsNumber: true })} type="number" min="0" step="0.01" className="input min-w-0" placeholder="Prix unitaire stock" />
                     {needsManualFactor ? (
                       <label className="block min-w-0">
                         <input
@@ -255,9 +255,9 @@ export function RecipeFormPage() {
         )}
 
         <section className="surface grid gap-4 p-5 md:grid-cols-5">
-          <Metric label="Cout total HT" value={`${totals.totalCost.toLocaleString('fr-FR')} Ar`} />
-          <Metric label="Cout / portion" value={`${totals.costPerPortion.toLocaleString('fr-FR')} Ar`} />
-          <Metric label="Prix conseille" value={`${totals.suggestedPrice.toLocaleString('fr-FR')} Ar`} />
+          <Metric label="Cout matiere total HT" value={`${totals.totalCost.toLocaleString('fr-FR')} Ar`} />
+          <Metric label="Cout matiere par portion" value={`${totals.costPerPortion.toLocaleString('fr-FR')} Ar`} />
+          <Metric label="Prix de vente conseille HT" value={`${totals.suggestedPrice.toLocaleString('fr-FR')} Ar`} />
           <Metric label="Ratio cout" value={`${totals.costRatio.toFixed(1)} %`} />
           <Metric label="Marge" value={`${totals.marginRate.toFixed(1)} %`} />
           <p className="text-xs text-slate-500 md:col-span-5">Tous les prix indiques sont hors TVA.</p>

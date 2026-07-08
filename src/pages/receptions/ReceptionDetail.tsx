@@ -7,9 +7,10 @@ import { useAuth } from '../../hooks/useAuth'
 import { exportReceptionToPdf } from '../../lib/receptionExports'
 import { anomalyTypeLabels, canCreateReceptions, canValidateReceptionWithAnomalies, canValidateReceptions, receptionStatusLabels } from '../../lib/receptions'
 import type { Reception } from '../../lib/receptions'
+import { effectiveCostMethodLabels, invoiceTaxModeLabels } from '../../lib/materialCosts'
 
 const receptionComparisonGrid =
-  'grid min-w-[1560px] grid-cols-[1.4fr_120px_120px_120px_120px_130px_130px_130px_140px_140px_160px_120px] items-center gap-4 px-5'
+  'grid min-w-[1740px] grid-cols-[1.4fr_120px_120px_120px_120px_130px_150px_130px_150px_150px_190px_180px_120px] items-center gap-4 px-5'
 
 export function ReceptionDetail() {
   const { id } = useParams()
@@ -43,6 +44,18 @@ export function ReceptionDetail() {
   const canSubmit = canValidate && ['brouillon'].includes(reception.status)
   const canDirectionValidate = reception.status === 'en_attente' && (hasAnomalies ? canValidateAnomalies : canValidate)
   const canModify = canEdit && ['brouillon', 'en_attente'].includes(reception.status)
+  const receptionItems = reception.reception_items ?? []
+  const firstItem = receptionItems[0]
+  const fiscalSummary = {
+    invoiceAmountHt: receptionItems.reduce((sum, item) => sum + Number(item.invoice_amount_ht ?? 0), 0),
+    invoiceVatAmount: receptionItems.reduce((sum, item) => sum + Number(item.invoice_vat_amount ?? 0), 0),
+    invoiceAmountTtc: receptionItems.reduce((sum, item) => sum + Number(item.invoice_amount_ttc ?? 0), 0),
+    recoverableVat: receptionItems.reduce((sum, item) => sum + Number(item.recoverable_vat_amount ?? 0), 0),
+    nonRecoverableVat: receptionItems.reduce((sum, item) => sum + Number(item.non_recoverable_vat_amount ?? 0), 0),
+    declaredExtraTax: receptionItems.reduce((sum, item) => sum + Number(item.declared_extra_tax_amount ?? 0), 0),
+    accountingTotal: receptionItems.reduce((sum, item) => sum + Number(item.accounting_total_amount ?? 0), 0),
+    effectiveMaterialCost: receptionItems.reduce((sum, item) => sum + Number(item.effective_material_cost_total ?? 0), 0),
+  }
 
   const submit = async () => {
     await submitReception(reception.id, profile?.id)
@@ -126,6 +139,37 @@ export function ReceptionDetail() {
         {reception.validation_comment && <div className="md:col-span-2"><InfoFlat label="Commentaire validation" value={reception.validation_comment} /></div>}
       </section>
 
+      <section className="surface p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="eyebrow">Lecture fiscale / cout matiere</p>
+            <h2 className="mt-1 text-lg font-bold text-slate-950">Resume de valorisation</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Le prix reel correspond au prix saisi a la reception. Le cout interne est le cout utilise pour valoriser le stock apres TVA, charges ou cout manuel.
+            </p>
+          </div>
+          <span className="w-fit rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[#1E3A8A]">
+            {firstItem?.invoice_tax_mode ? invoiceTaxModeLabels[firstItem.invoice_tax_mode] : 'Mode fiscal non renseigne'}
+          </span>
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-4">
+          <InfoFlat label="Montant HT / base reception" value={formatMoney(fiscalSummary.invoiceAmountHt || reception.total_amount)} />
+          <InfoFlat label="TVA facture" value={formatMoney(fiscalSummary.invoiceVatAmount)} />
+          <InfoFlat label="Montant TTC" value={formatMoney(fiscalSummary.invoiceAmountTtc || reception.total_amount)} />
+          <InfoFlat label="Total comptable" value={formatMoney(fiscalSummary.accountingTotal || reception.total_amount)} />
+          <InfoFlat label="TVA recuperable" value={formatMoney(fiscalSummary.recoverableVat)} />
+          <InfoFlat label="TVA non recuperable" value={formatMoney(fiscalSummary.nonRecoverableVat)} />
+          <InfoFlat label="Charge declarative" value={formatMoney(fiscalSummary.declaredExtraTax)} />
+          <InfoFlat label="Cout matiere interne" value={formatMoney(fiscalSummary.effectiveMaterialCost || reception.total_amount)} />
+        </div>
+        {firstItem?.effective_cost_method && (
+          <p className="mt-4 text-sm text-slate-600">
+            Methode de cout : <strong>{effectiveCostMethodLabels[firstItem.effective_cost_method]}</strong>
+            {firstItem.effective_cost_note ? ` - ${firstItem.effective_cost_note}` : ''}
+          </p>
+        )}
+      </section>
+
       {(reception.purchase_orders || reception.cash_purchases) && (
         <section className="surface">
           <div className="border-b border-slate-200 px-5 py-4">
@@ -166,12 +210,13 @@ export function ReceptionDetail() {
             <span>Livre</span>
             <span>Accepte</span>
             <span>Ecart qte</span>
-            <span>Prix prevu</span>
-            <span>Prix reel</span>
+            <span>Prix prevu saisi</span>
+            <span>Prix reel saisi</span>
             <span>Ecart prix</span>
             <span>Total prevu</span>
-            <span>Total reel</span>
-            <span>Cout interne</span>
+            <span>Total recu saisi</span>
+            <span>Cout interne stock</span>
+            <span>Methode cout</span>
             <span>Statut</span>
           </div>
           <div className="divide-y divide-slate-200">
@@ -211,13 +256,17 @@ export function ReceptionDetail() {
                       <span className="block font-semibold text-[#1E3A8A]">{formatMoney(item.effective_material_unit_cost ?? item.unit_price_real)} / {stockUnit}</span>
                       <span className="text-xs text-slate-500">{formatMoney(item.effective_material_cost_total ?? acceptedQuantity * Number(item.unit_price_real ?? 0))} total</span>
                     </span>
+                    <span className="text-xs text-slate-600">
+                      <span className="block font-semibold text-slate-800">{item.invoice_tax_mode ? invoiceTaxModeLabels[item.invoice_tax_mode] : '-'}</span>
+                      <span className="mt-1 block">{item.effective_cost_method ? effectiveCostMethodLabels[item.effective_cost_method] : '-'}</span>
+                    </span>
                     <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${isConform ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>
                       {isConform ? 'Conforme' : 'Ecart'}
                     </span>
                   </div>
-              {item.quality_comment && <p className="min-w-[1400px] px-5 text-sm text-slate-600">Qualite : {item.quality_comment}</p>}
+              {item.quality_comment && <p className="min-w-[1740px] px-5 text-sm text-slate-600">Qualite : {item.quality_comment}</p>}
               {(item.reception_anomalies?.length ?? 0) > 0 && (
-                <div className="grid min-w-[1400px] gap-3 px-5 md:grid-cols-2">
+                <div className="grid min-w-[1740px] gap-3 px-5 md:grid-cols-2">
                   {item.reception_anomalies?.map((anomaly) => (
                     <div key={anomaly.id} className="rounded-md border border-amber-200 bg-amber-50 p-3">
                       <p className="font-semibold text-amber-900">{anomalyTypeLabels[anomaly.anomaly_type]}</p>
@@ -233,7 +282,7 @@ export function ReceptionDetail() {
                 </div>
               )
             })}
-            {(reception.reception_items?.length ?? 0) === 0 && <p className="min-w-[1400px] p-5 text-sm text-slate-600">Aucun article receptionne.</p>}
+            {(reception.reception_items?.length ?? 0) === 0 && <p className="min-w-[1740px] p-5 text-sm text-slate-600">Aucun article receptionne.</p>}
           </div>
         </div>
       </section>

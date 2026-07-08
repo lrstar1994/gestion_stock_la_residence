@@ -117,9 +117,9 @@ export function CashPurchaseDetail() {
 
       <section className="grid gap-4 md:grid-cols-4">
         <Info label="Acheteur" value={purchase.buyer?.full_name || '-'} />
-        <Info label="Demande" value={`${Number(purchase.amount_requested).toLocaleString('fr-FR')} Ar`} />
-        <Info label="Remis" value={`${Number(purchase.amount_given).toLocaleString('fr-FR')} Ar`} />
-        <Info label="Ecart" value={`${Number(purchase.difference).toLocaleString('fr-FR')} Ar`} />
+        <Info label="Montant demande" value={`${Number(purchase.amount_requested).toLocaleString('fr-FR')} Ar`} />
+        <Info label="Especes remises" value={`${Number(purchase.amount_given).toLocaleString('fr-FR')} Ar`} />
+        <Info label="Ecart de monnaie" value={`${Number(purchase.difference).toLocaleString('fr-FR')} Ar`} />
       </section>
 
       <section className="surface p-5">
@@ -129,22 +129,22 @@ export function CashPurchaseDetail() {
 
       {canValidate && purchase.status === 'en_attente' && (
         <section className="surface flex flex-col gap-3 p-5 lg:flex-row lg:items-end">
-          <label className="block"><span className="field-label">Montant valide</span><input value={amountValidated} onChange={(event) => setAmountValidated(Number(event.target.value))} type="number" className="input mt-2" /></label>
-          <button type="button" onClick={validate} className="btn-primary"><CheckCircle className="mr-2 h-4 w-4" /> Valider</button>
+          <label className="block"><span className="field-label">Montant valide par Direction</span><input value={amountValidated} onChange={(event) => setAmountValidated(Number(event.target.value))} type="number" className="input mt-2" /></label>
+          <button type="button" onClick={validate} className="btn-primary"><CheckCircle className="mr-2 h-4 w-4" /> Valider le decaissement</button>
           <button type="button" onClick={refuse} className="btn-secondary text-red-700"><XCircle className="mr-2 h-4 w-4" /> Refuser</button>
         </section>
       )}
 
       {canGive && purchase.status === 'valide' && (
         <section className="surface flex flex-col gap-3 p-5 lg:flex-row lg:items-end">
-          <label className="block"><span className="field-label">Montant remis</span><input value={amountGiven} onChange={(event) => setAmountGiven(Number(event.target.value))} type="number" className="input mt-2" /></label>
-          <button type="button" onClick={give} className="btn-primary"><HandCoins className="mr-2 h-4 w-4" /> Remettre especes</button>
+          <label className="block"><span className="field-label">Montant remis par la caisse</span><input value={amountGiven} onChange={(event) => setAmountGiven(Number(event.target.value))} type="number" className="input mt-2" /></label>
+          <button type="button" onClick={give} className="btn-primary"><HandCoins className="mr-2 h-4 w-4" /> Confirmer remise especes</button>
         </section>
       )}
 
       <section className="surface overflow-hidden">
         <div className="hidden grid-cols-[1fr_100px_130px_100px_130px_130px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
-          <span>Article</span><span>Prev.</span><span>Prix estime</span><span>Achete</span><span>Prix reel</span><span>Total reel</span>
+          <span>Article</span><span>Quantite prevue</span><span>Prix unitaire estime</span><span>Quantite achetee</span><span>Prix reel saisi</span><span>Total achat reel</span>
         </div>
         <div className="divide-y divide-slate-200">
           {items.map((item) => (
@@ -162,9 +162,9 @@ export function CashPurchaseDetail() {
 
       {canReturn && purchase.status === 'especes_remises' && (
         <section className="surface grid gap-4 p-5 md:grid-cols-4">
-          <Info label="Total achats" value={`${totalReal.toLocaleString('fr-FR')} Ar`} />
-          <Info label="Monnaie attendue" value={`${expectedChange.toLocaleString('fr-FR')} Ar`} />
-          <label className="block"><span className="field-label">Monnaie rendue</span><input value={changeReturned} onChange={(event) => setChangeReturned(Number(event.target.value))} type="number" className="input mt-2" /></label>
+          <Info label="Total achats justifies" value={`${totalReal.toLocaleString('fr-FR')} Ar`} />
+          <Info label="Monnaie attendue a rendre" value={`${expectedChange.toLocaleString('fr-FR')} Ar`} />
+          <label className="block"><span className="field-label">Monnaie effectivement rendue</span><input value={changeReturned} onChange={(event) => setChangeReturned(Number(event.target.value))} type="number" className="input mt-2" /></label>
           <div><button type="button" onClick={saveReturn} className="btn-primary mt-6"><Save className="mr-2 h-4 w-4" /> Enregistrer retour</button></div>
           {differenceRequiresDirection && <p className="text-sm font-semibold text-red-700 md:col-span-4">Ecart superieur a 10% : validation Direction obligatoire.</p>}
         </section>
@@ -216,8 +216,8 @@ export function CashPurchaseDetail() {
       {canValidate && (purchase.status === 'retour_partiel' || purchase.status === 'retour_complet') && (
         <section className="surface p-5">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-            <label className="block flex-1"><span className="field-label">Commentaire cloture</span><input value={closingComment} onChange={(event) => setClosingComment(event.target.value)} className="input mt-2" /></label>
-            <button type="button" onClick={close} disabled={!canCloseFile} className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"><LockKeyhole className="mr-2 h-4 w-4" /> Cloturer</button>
+            <label className="block flex-1"><span className="field-label">Commentaire de cloture</span><input value={closingComment} onChange={(event) => setClosingComment(event.target.value)} className="input mt-2" /></label>
+            <button type="button" onClick={close} disabled={!canCloseFile} className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"><LockKeyhole className="mr-2 h-4 w-4" /> Cloturer le dossier</button>
           </div>
           {!canCloseFile && (
             <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">

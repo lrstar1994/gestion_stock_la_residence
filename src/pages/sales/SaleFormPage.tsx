@@ -342,9 +342,9 @@ export function SaleFormPage() {
                     <div><span className="field-label">Unite</span><p className="mt-2 font-semibold text-slate-600">portion</p></div>
                   )}
                   <label><span className="field-label">Offert</span><input type="number" min="0" step="0.01" value={item.quantity_offered} onChange={(event) => updateItem(index, item.product_type === 'produit_brut' ? getRawSaleConversionPatch(item, { quantity_offered: Number(event.target.value) }) : { quantity_offered: Number(event.target.value) })} className="input mt-2" /></label>
-                  <label><span className="field-label">Prix</span><input type="number" value={item.unit_price} onChange={(event) => updateItem(index, { unit_price: Number(event.target.value) })} className="input mt-2" /></label>
+                  <label><span className="field-label">Prix unitaire vente</span><input type="number" value={item.unit_price} onChange={(event) => updateItem(index, { unit_price: Number(event.target.value) })} className="input mt-2" /></label>
                   <label><span className="field-label">Remise</span><input type="number" value={item.discount} onChange={(event) => updateItem(index, { discount: Number(event.target.value) })} className="input mt-2" /></label>
-                  <div><span className="field-label">Total</span><p className="mt-2 font-bold">{lineTotal.toLocaleString('fr-FR')} Ar</p><p className="text-xs text-slate-500">{item.product_type === 'produit_brut' ? displayUnit?.abbreviation : recipe?.code}</p></div>
+                  <div><span className="field-label">Total ligne vente</span><p className="mt-2 font-bold">{lineTotal.toLocaleString('fr-FR')} Ar</p><p className="text-xs text-slate-500">{item.product_type === 'produit_brut' ? displayUnit?.abbreviation : recipe?.code}</p></div>
                   <button type="button" onClick={() => removeItem(index)} className="btn-secondary text-red-700"><Trash2 className="h-4 w-4" /></button>
                 </div>
                 {item.product_type === 'produit_brut' && (
@@ -376,7 +376,7 @@ export function SaleFormPage() {
                 )}
                 {item.product_type === 'produit_brut' && item.article_id && rawPrices.has(item.article_id) && (
                   <p className="rounded-md bg-blue-50 p-3 text-xs font-semibold text-blue-800">
-                    Prix stock moyen : {Number(rawPrices.get(item.article_id)?.averagePrice ?? 0).toLocaleString('fr-FR')} Ar - prix propose : {Number(rawPrices.get(item.article_id)?.suggestedPrice ?? 0).toLocaleString('fr-FR')} Ar
+                    Cout stock moyen : {Number(rawPrices.get(item.article_id)?.averagePrice ?? 0).toLocaleString('fr-FR')} Ar - prix de vente propose : {Number(rawPrices.get(item.article_id)?.suggestedPrice ?? 0).toLocaleString('fr-FR')} Ar
                   </p>
                 )}
                 {Number(item.quantity_offered ?? 0) > 0 && <input value={item.offer_reason ?? ''} onChange={(event) => updateItem(index, { offer_reason: event.target.value })} className="input" placeholder="Motif obligatoire de l'offre" />}
@@ -390,9 +390,9 @@ export function SaleFormPage() {
       </section>
 
       <section className="surface grid gap-4 p-5 md:grid-cols-3">
-        <Metric label="Avant remise" value={`${totals.beforeDiscount.toLocaleString('fr-FR')} Ar`} />
-        <Metric label="Remises" value={`${totals.discount.toLocaleString('fr-FR')} Ar`} />
-        <Metric label="Total TTC" value={`${totals.afterDiscount.toLocaleString('fr-FR')} Ar`} />
+        <Metric label="Total avant remise" value={`${totals.beforeDiscount.toLocaleString('fr-FR')} Ar`} />
+        <Metric label="Total remises" value={`${totals.discount.toLocaleString('fr-FR')} Ar`} />
+        <Metric label="Total vente TTC" value={`${totals.afterDiscount.toLocaleString('fr-FR')} Ar`} />
       </section>
     </form>
   )

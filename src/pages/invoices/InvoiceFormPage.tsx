@@ -199,8 +199,8 @@ export function InvoiceFormPage() {
         <label className="block"><span className="field-label">Numero facture fournisseur</span><input value={values.invoice_number} onChange={(event) => setValues((current) => ({ ...current, invoice_number: event.target.value }))} className="input mt-2" /></label>
         <label className="block"><span className="field-label">Date facture</span><input type="date" value={values.invoice_date} onChange={(event) => setValues((current) => ({ ...current, invoice_date: event.target.value }))} className="input mt-2" /></label>
         <label className="block"><span className="field-label">Date echeance</span><input type="date" value={values.due_date} onChange={(event) => setValues((current) => ({ ...current, due_date: event.target.value }))} className="input mt-2" /></label>
-        <label className="block"><span className="field-label">Montant HT</span><input type="number" value={values.amount_ht} onChange={(event) => setValues((current) => ({ ...current, amount_ht: Number(event.target.value) }))} className="input mt-2" /></label>
-        <label className="block"><span className="field-label">TVA</span><input type="number" value={values.amount_tva} onChange={(event) => setValues((current) => ({ ...current, amount_tva: Number(event.target.value) }))} className="input mt-2" /></label>
+        <label className="block"><span className="field-label">Montant HT facture</span><input type="number" value={values.amount_ht} onChange={(event) => setValues((current) => ({ ...current, amount_ht: Number(event.target.value) }))} className="input mt-2" /></label>
+        <label className="block"><span className="field-label">Montant TVA facture</span><input type="number" value={values.amount_tva} onChange={(event) => setValues((current) => ({ ...current, amount_tva: Number(event.target.value) }))} className="input mt-2" /></label>
         <label className="block"><span className="field-label">Mode paiement prevu</span><select value={values.payment_mode ?? ''} onChange={(event) => setValues((current) => ({ ...current, payment_mode: event.target.value as InvoiceFormValues['payment_mode'] || undefined }))} className="input mt-2"><option value="">Non defini</option>{paymentModes.map((mode) => <option key={mode} value={mode}>{paymentModeLabels[mode]}</option>)}</select></label>
         <label className="block"><span className="field-label">Piece jointe obligatoire</span><label className="btn-secondary mt-2 cursor-pointer"><Upload className="mr-2 h-4 w-4" /> {file?.name ?? 'Choisir fichier'}<input type="file" accept="image/*,.pdf" required={!isEdit} onChange={(event) => setFile(event.target.files?.[0])} className="hidden" /></label>{!isEdit && <p className="mt-1 text-xs font-semibold text-amber-700">Obligatoire pour creer la facture.</p>}</label>
         <label className="block md:col-span-2"><span className="field-label">Commentaire</span><textarea value={values.comment} onChange={(event) => setValues((current) => ({ ...current, comment: event.target.value }))} className="input mt-2 min-h-24" /></label>
@@ -208,8 +208,9 @@ export function InvoiceFormPage() {
 
       <section className="surface grid gap-4 p-5 md:grid-cols-2">
         <div className="md:col-span-2">
-          <p className="eyebrow">Lecture fiscale / cout matiere</p>
-          <h2 className="mt-2 text-lg font-bold text-slate-950">Cout matiere interne retenu</h2>
+          <p className="eyebrow">Fiscalite et cout matiere interne</p>
+          <h2 className="mt-2 text-lg font-bold text-slate-950">Cout matiere interne de la facture</h2>
+          <p className="mt-1 text-sm text-slate-600">Ces informations distinguent la lecture comptable de la valorisation interne du stock.</p>
         </div>
         <label className="block">
           <span className="field-label">Mode fiscal</span>
@@ -218,32 +219,32 @@ export function InvoiceFormPage() {
           </select>
         </label>
         <label className="block">
-          <span className="field-label">Taux TVA</span>
+          <span className="field-label">Taux TVA facture</span>
           <input type="number" value={values.vat_rate ?? 20} onChange={(event) => setValues((current) => ({ ...current, vat_rate: Number(event.target.value) }))} className="input mt-2" />
         </label>
         <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
           <input type="checkbox" checked={values.vat_recoverable ?? true} onChange={(event) => setValues((current) => ({ ...current, vat_recoverable: event.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[#1E3A8A] focus:ring-[#1E3A8A]" />
-          TVA recuperable
+          TVA recuperable par La Residence
         </label>
         <label className="block">
           <span className="field-label">Charge declarative %</span>
           <input type="number" value={values.declared_extra_tax_rate ?? 0} onChange={(event) => setValues((current) => ({ ...current, declared_extra_tax_rate: Number(event.target.value) }))} className="input mt-2" />
         </label>
         <label className="block md:col-span-2">
-          <span className="field-label">Note cout interne</span>
+          <span className="field-label">Note cout matiere interne</span>
           <input value={values.effective_cost_note ?? ''} onChange={(event) => setValues((current) => ({ ...current, effective_cost_note: event.target.value }))} className="input mt-2" placeholder="Motif ou precision si cout exceptionnel" />
         </label>
         <div className="rounded-md border border-[#D4AF37]/30 bg-amber-50 p-4 text-sm text-slate-800 md:col-span-2">
           <p>TVA recuperable : <strong>{materialCost.recoverable_vat_amount.toLocaleString('fr-FR')} Ar</strong></p>
           <p>TVA non recuperable : <strong>{materialCost.non_recoverable_vat_amount.toLocaleString('fr-FR')} Ar</strong></p>
           <p>Charge declarative : <strong>{materialCost.declared_extra_tax_amount.toLocaleString('fr-FR')} Ar</strong></p>
-          <p>Cout matiere interne : <strong>{Number(materialCost.effective_material_cost_total ?? 0).toLocaleString('fr-FR')} Ar</strong></p>
+          <p>Cout matiere interne estime : <strong>{Number(materialCost.effective_material_cost_total ?? 0).toLocaleString('fr-FR')} Ar</strong></p>
         </div>
       </section>
 
       <section className="surface overflow-hidden">
         <div className="border-b border-slate-200 px-5 py-4">
-          <h2 className="text-lg font-bold">Articles factures</h2>
+          <h2 className="text-lg font-bold">Articles factures repris de la reception</h2>
           <p className="mt-1 text-sm text-slate-600">Lignes reprises depuis la reception. Aucun ajout ou suppression manuel n'est autorise.</p>
         </div>
         <div className="divide-y divide-slate-200">
@@ -254,8 +255,8 @@ export function InvoiceFormPage() {
                 <div><span className="field-label">Article</span><p className="mt-2 font-semibold text-slate-950">{selectedArticle?.name ?? item.article_id}</p></div>
                 <div><span className="field-label">Quantite</span><p className="mt-2 font-bold">{Number(item.quantity).toLocaleString('fr-FR')}</p></div>
                 <div><span className="field-label">Unite</span><p className="mt-2 font-semibold">{selectedArticle?.units?.abbreviation ?? '-'}</p></div>
-                <div><span className="field-label">Prix unitaire</span><p className="mt-2 font-bold">{Number(item.unit_price).toLocaleString('fr-FR')} Ar</p></div>
-                <div><span className="field-label">Total</span><p className="mt-2 font-bold">{(Number(item.quantity) * Number(item.unit_price)).toLocaleString('fr-FR')} Ar</p></div>
+                <div><span className="field-label">Prix unitaire facture</span><p className="mt-2 font-bold">{Number(item.unit_price).toLocaleString('fr-FR')} Ar</p></div>
+                <div><span className="field-label">Total ligne facture</span><p className="mt-2 font-bold">{(Number(item.quantity) * Number(item.unit_price)).toLocaleString('fr-FR')} Ar</p></div>
               </div>
             )
           })}
@@ -264,7 +265,7 @@ export function InvoiceFormPage() {
       </section>
 
       <section className="surface flex items-center justify-between p-5">
-        <span className="text-sm text-slate-600">Montant TTC</span>
+        <span className="text-sm text-slate-600">Montant TTC facture calcule</span>
         <span className="text-2xl font-black text-[#1E3A8A]">{amountTtc.toLocaleString('fr-FR')} Ar</span>
       </section>
 

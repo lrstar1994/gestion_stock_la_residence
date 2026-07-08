@@ -75,10 +75,13 @@ export function ReceptionFormPage() {
   const [cashPurchases, setCashPurchases] = useState<CashPurchase[]>([])
   const [fiscalSettings, setFiscalSettings] = useState<ReceptionFiscalSettings>(defaultFiscalSettings)
   const total = useMemo(() => calculateReceptionTotal(values.items), [values.items])
+  const fiscalVatAmount = ['invoice_with_recoverable_vat', 'invoice_ttc_vat_not_recoverable'].includes(fiscalSettings.invoice_tax_mode)
+    ? total * Number(fiscalSettings.vat_rate ?? 0) / 100
+    : 0
   const fiscalPreview = useMemo(() => calculateMaterialCost({
     amountHt: total,
-    vatAmount: total * Number(fiscalSettings.vat_rate ?? 0) / 100,
-    amountTtc: total + total * Number(fiscalSettings.vat_rate ?? 0) / 100,
+    vatAmount: fiscalVatAmount,
+    amountTtc: total + fiscalVatAmount,
     quantityStock: 1,
     invoiceTaxMode: fiscalSettings.invoice_tax_mode,
     vatRate: fiscalSettings.vat_rate,
@@ -86,7 +89,7 @@ export function ReceptionFormPage() {
     declaredExtraTaxRate: fiscalSettings.declared_extra_tax_rate,
     declaredExtraTaxAmount: fiscalSettings.declared_extra_tax_amount,
     manualCostTotal: fiscalSettings.manual_cost_total,
-  }), [fiscalSettings, total])
+  }), [fiscalSettings, fiscalVatAmount, total])
 
   const selectOrder = useCallback((order: PurchaseOrder, fallbackLocationId = '') => {
     setValues((current) => ({
@@ -449,8 +452,8 @@ export function ReceptionFormPage() {
 
       <section className="surface grid gap-4 p-5 md:grid-cols-2">
         <div className="md:col-span-2">
-          <p className="eyebrow">Lecture fiscale / cout matiere</p>
-          <h2 className="mt-2 text-lg font-bold text-slate-950">Cout matiere interne de la reception</h2>
+          <p className="eyebrow">Fiscalite et cout matiere interne</p>
+          <h2 className="mt-2 text-lg font-bold text-slate-950">Valorisation stock de la reception</h2>
           <p className="mt-1 text-sm text-slate-600">Ces reglages sont appliques aux lignes recues au moment de l'enregistrement.</p>
         </div>
         <label className="block">
@@ -466,12 +469,12 @@ export function ReceptionFormPage() {
           </select>
         </label>
         <label className="block">
-          <span className="field-label">Taux TVA</span>
+          <span className="field-label">Taux TVA reception</span>
           <input type="number" value={fiscalSettings.vat_rate} onChange={(event) => setFiscalSettings((current) => ({ ...current, vat_rate: Number(event.target.value) }))} className="input mt-2" />
         </label>
         <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
           <input type="checkbox" checked={fiscalSettings.vat_recoverable} onChange={(event) => setFiscalSettings((current) => ({ ...current, vat_recoverable: event.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[#1E3A8A] focus:ring-[#1E3A8A]" />
-          TVA recuperable
+          TVA recuperable par La Residence
         </label>
         <label className="block">
           <span className="field-label">Charge declarative %</span>
@@ -488,11 +491,11 @@ export function ReceptionFormPage() {
           </label>
         )}
         <label className="block md:col-span-2">
-          <span className="field-label">Note cout interne</span>
+          <span className="field-label">Note cout matiere interne</span>
           <input value={fiscalSettings.effective_cost_note} onChange={(event) => setFiscalSettings((current) => ({ ...current, effective_cost_note: event.target.value }))} className="input mt-2" placeholder="Motif ou precision si cout exceptionnel" />
         </label>
         <div className="rounded-md border border-[#D4AF37]/30 bg-amber-50 p-4 text-sm text-slate-800 md:col-span-2">
-          <p>Base reception : <strong>{total.toLocaleString('fr-FR')} Ar</strong></p>
+          <p>Total recu saisi : <strong>{total.toLocaleString('fr-FR')} Ar</strong></p>
           <p>TVA recuperable estimee : <strong>{fiscalPreview.recoverable_vat_amount.toLocaleString('fr-FR')} Ar</strong></p>
           <p>TVA non recuperable estimee : <strong>{fiscalPreview.non_recoverable_vat_amount.toLocaleString('fr-FR')} Ar</strong></p>
           <p>Charge declarative estimee : <strong>{fiscalPreview.declared_extra_tax_amount.toLocaleString('fr-FR')} Ar</strong></p>
@@ -502,7 +505,7 @@ export function ReceptionFormPage() {
 
       <section className="surface overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <h2 className="text-lg font-bold">Articles recus</h2>
+          <h2 className="text-lg font-bold">Articles recus et valorisation stock</h2>
           {receptionMode === 'manual' && (
             <button type="button" onClick={addItem} className="btn-secondary"><Plus className="mr-2 h-4 w-4" /> Ajouter</button>
           )}
@@ -542,9 +545,9 @@ export function ReceptionFormPage() {
                     <label className="block"><span className="field-label">Livre</span><input type="number" value={item.quantity_delivered_display ?? item.quantity_delivered} onChange={(event) => updateItem(index, computeConversionPatch(item, { quantity_delivered_display: Number(event.target.value) }))} className="input mt-2" /></label>
                     <label className="block"><span className="field-label">Accepte</span><input type="number" value={item.quantity_accepted_display ?? item.quantity_accepted} onChange={(event) => updateItem(index, computeConversionPatch(item, { quantity_accepted_display: Number(event.target.value) }))} className="input mt-2" /></label>
                     <Info label="Refuse" value={`${refused.toLocaleString('fr-FR')} ${displayUnit?.abbreviation ?? ''}`} />
-                    <Info label="Prix prevu" value={`${Number(item.unit_price_planned ?? 0).toLocaleString('fr-FR')} Ar / ${displayUnit?.abbreviation ?? ''}`} />
-                    <label className="block"><span className="field-label">Prix reel</span><input type="number" value={item.unit_price_display ?? item.unit_price_real} onChange={(event) => updateItem(index, computeConversionPatch(item, { unit_price_display: Number(event.target.value) }))} className="input mt-2" /></label>
-                    <Info label="Total accepte" value={`${acceptedTotal.toLocaleString('fr-FR')} Ar`} />
+                    <Info label="Prix prevu saisi" value={`${Number(item.unit_price_planned ?? 0).toLocaleString('fr-FR')} Ar / ${displayUnit?.abbreviation ?? ''}`} />
+                    <label className="block"><span className="field-label">Prix reel saisi</span><input type="number" value={item.unit_price_display ?? item.unit_price_real} onChange={(event) => updateItem(index, computeConversionPatch(item, { unit_price_display: Number(event.target.value) }))} className="input mt-2" /></label>
+                    <Info label="Total recu saisi" value={`${acceptedTotal.toLocaleString('fr-FR')} Ar`} />
                   </div>
                   <div className="grid gap-3 rounded-md bg-white p-3 text-sm md:grid-cols-3">
                     <label className="block">
@@ -552,7 +555,7 @@ export function ReceptionFormPage() {
                       <input type="number" min="0" step="0.0001" value={item.conversion_factor ?? 1} onChange={(event) => updateItem(index, computeConversionPatch(item, { conversion_factor: Number(event.target.value) }))} className="input mt-2" />
                     </label>
                     <Info label="Entree stock" value={`${Number(item.quantity_accepted ?? 0).toLocaleString('fr-FR')} ${stockUnit?.abbreviation ?? selectedArticle?.units?.abbreviation ?? ''}`} />
-                    <Info label="Prix stock" value={`${Number(item.unit_price_real ?? 0).toLocaleString('fr-FR')} Ar / ${stockUnit?.abbreviation ?? selectedArticle?.units?.abbreviation ?? ''}`} />
+                    <Info label="Cout interne stock" value={`${Number(item.unit_price_real ?? 0).toLocaleString('fr-FR')} Ar / ${stockUnit?.abbreviation ?? selectedArticle?.units?.abbreviation ?? ''}`} />
                     {needsManualFactor && <p className="font-semibold text-amber-700 md:col-span-3">Conversion manuelle requise : indiquez combien vaut 1 {displayUnit?.abbreviation} en {stockUnit?.abbreviation}.</p>}
                   </div>
                 </div>
@@ -576,7 +579,7 @@ export function ReceptionFormPage() {
         </div>
       </section>
 
-      <section className="surface flex items-center justify-between p-5"><span className="text-sm text-slate-600">Montant total accepte</span><span className="text-2xl font-black text-[#1E3A8A]">{total.toLocaleString('fr-FR')} Ar</span></section>
+      <section className="surface flex items-center justify-between p-5"><span className="text-sm text-slate-600">Total recu saisi</span><span className="text-2xl font-black text-[#1E3A8A]">{total.toLocaleString('fr-FR')} Ar</span></section>
     </form>
   )
 }

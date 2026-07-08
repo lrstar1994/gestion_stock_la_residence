@@ -226,7 +226,7 @@ export function PurchaseOrderFormPage() {
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div><p className="eyebrow">Commande fournisseur</p><h1 className="page-title mt-2">{isEdit ? 'Modifier la commande' : 'Nouvelle commande'}</h1></div>
         <div className="flex gap-2">
-          <button type="button" onClick={cancel} className="btn-secondary">Annuler</button>
+          <button type="button" onClick={cancel} className="btn-secondary">Quitter la commande</button>
           <button type="submit" className="btn-primary"><Save className="mr-2 h-4 w-4" /> Enregistrer en brouillon</button>
         </div>
       </header>
@@ -245,20 +245,21 @@ export function PurchaseOrderFormPage() {
       {!isEdit && (
         <section className="surface p-5">
           <label className="block">
-            <span className="field-label">Creer depuis un groupe d'achat</span>
+            <span className="field-label">Creer depuis des besoins regroupes</span>
             <select value={values.group_id} onChange={(event) => selectGroup(event.target.value)} className="input mt-2">
               <option value="">Creation manuelle</option>
               {groups.map((group) => <option key={group.id} value={group.id}>{groupLabel(group)}</option>)}
             </select>
+            <p className="mt-2 text-sm text-slate-600">Les besoins valides du groupe seront repris automatiquement dans la commande.</p>
           </label>
         </section>
       )}
 
       <section className="surface grid gap-4 p-5 md:grid-cols-2">
         <label className="block"><span className="field-label">Fournisseur</span><select value={values.supplier_id} onChange={(event) => setValues((current) => ({ ...current, supplier_id: event.target.value }))} className="input mt-2"><option value="">Selectionner</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
-        <label className="block"><span className="field-label">Date commande</span><input type="date" value={values.order_date} onChange={(event) => setValues((current) => ({ ...current, order_date: event.target.value }))} className="input mt-2" /></label>
+        <label className="block"><span className="field-label">Date de commande</span><input type="date" value={values.order_date} onChange={(event) => setValues((current) => ({ ...current, order_date: event.target.value }))} className="input mt-2" /></label>
         <label className="block"><span className="field-label">Date livraison prevue</span><input type="date" value={values.delivery_date} onChange={(event) => setValues((current) => ({ ...current, delivery_date: event.target.value }))} className="input mt-2" /></label>
-        <label className="block"><span className="field-label">Reference fournisseur</span><input value={values.supplier_reference} onChange={(event) => setValues((current) => ({ ...current, supplier_reference: event.target.value }))} className="input mt-2" /></label>
+        <label className="block"><span className="field-label">Reference fournisseur optionnelle</span><input value={values.supplier_reference} onChange={(event) => setValues((current) => ({ ...current, supplier_reference: event.target.value }))} className="input mt-2" /></label>
         <label className="block"><span className="field-label">Conditions de paiement</span><input value={values.payment_terms} onChange={(event) => setValues((current) => ({ ...current, payment_terms: event.target.value }))} className="input mt-2" /></label>
         <label className="block"><span className="field-label">Mode de livraison</span><input value={values.delivery_mode} onChange={(event) => setValues((current) => ({ ...current, delivery_mode: event.target.value }))} className="input mt-2" /></label>
         <label className="block md:col-span-2"><span className="field-label">Commentaire</span><textarea value={values.comment} onChange={(event) => setValues((current) => ({ ...current, comment: event.target.value }))} className="input mt-2 min-h-24" /></label>
@@ -266,19 +267,19 @@ export function PurchaseOrderFormPage() {
 
       <section className="surface overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <h2 className="text-lg font-bold">Articles</h2>
+          <h2 className="text-lg font-bold">Articles commandes</h2>
           <button type="button" onClick={addItem} className="btn-secondary"><Plus className="mr-2 h-4 w-4" /> Ajouter</button>
         </div>
         <div className="divide-y divide-slate-200">
           {values.items.map((item, index) => {
             const selectedArticle = articles.find((article) => article.id === item.article_id)
             return (
-              <div key={`${item.article_id}-${index}`} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_110px_120px_140px_140px_44px] xl:items-end">
+              <div key={`${item.article_id}-${index}`} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_150px_150px_170px_160px_44px] xl:items-end">
                 <label className="block"><span className="field-label">Article</span><select value={item.article_id} onChange={(event) => changeArticle(index, event.target.value)} className="input mt-2"><option value="">Article</option>{articles.map((article) => <option key={article.id} value={article.id}>{article.name}</option>)}</select></label>
-                <label className="block"><span className="field-label">Quantite</span><input type="number" value={item.quantity_ordered} onChange={(event) => updateItem(index, { quantity_ordered: Number(event.target.value) })} className="input mt-2" /></label>
-                <label className="block"><span className="field-label">Unite d'achat</span><select value={item.unit_id} onChange={(event) => updateItem(index, { unit_id: event.target.value })} className="input mt-2"><option value="">Unite</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.abbreviation}</option>)}</select>{selectedArticle?.units?.abbreviation && <p className="mt-1 text-xs text-slate-500">Stock : {selectedArticle.units.abbreviation}</p>}</label>
-                <label className="block"><span className="field-label">Prix unitaire</span><input type="number" value={item.unit_price} onChange={(event) => updateItem(index, { unit_price: Number(event.target.value) })} className="input mt-2" /></label>
-                <div><span className="field-label">Total</span><p className="mt-2 font-bold">{(Number(item.quantity_ordered) * Number(item.unit_price)).toLocaleString('fr-FR')} Ar</p></div>
+                <label className="block"><span className="field-label">Quantite commandee</span><input type="number" value={item.quantity_ordered} onChange={(event) => updateItem(index, { quantity_ordered: Number(event.target.value) })} className="input mt-2" /></label>
+                <label className="block"><span className="field-label">Unite d'achat</span><select value={item.unit_id} onChange={(event) => updateItem(index, { unit_id: event.target.value })} className="input mt-2"><option value="">Unite</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.abbreviation}</option>)}</select>{selectedArticle?.units?.abbreviation && <p className="mt-1 text-xs text-slate-500">Unite stock : {selectedArticle.units.abbreviation}</p>}</label>
+                <label className="block"><span className="field-label">Prix unitaire prevu</span><input type="number" value={item.unit_price} onChange={(event) => updateItem(index, { unit_price: Number(event.target.value) })} className="input mt-2" /></label>
+                <div><span className="field-label">Total ligne prevu</span><p className="mt-2 font-bold">{(Number(item.quantity_ordered) * Number(item.unit_price)).toLocaleString('fr-FR')} Ar</p></div>
                 <button type="button" onClick={() => removeItem(index)} className="btn-secondary text-red-700"><Trash2 className="h-4 w-4" /></button>
               </div>
             )
@@ -288,7 +289,7 @@ export function PurchaseOrderFormPage() {
       </section>
 
       <section className="surface flex items-center justify-between p-5">
-        <span className="text-sm text-slate-600">Montant total commande</span>
+        <span className="text-sm text-slate-600">Montant total prevu de la commande</span>
         <span className="text-2xl font-black text-[#1E3A8A]">{total.toLocaleString('fr-FR')} Ar</span>
       </section>
     </form>

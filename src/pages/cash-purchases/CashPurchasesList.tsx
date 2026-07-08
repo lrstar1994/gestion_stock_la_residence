@@ -62,7 +62,7 @@ export function CashPurchasesList() {
         <Metric label="A cloturer" value={String(dashboard.toClose)} />
         <Metric label="Avances" value={`${dashboard.advances.toLocaleString('fr-FR')} Ar`} />
         <Metric label="Achats" value={`${dashboard.purchased.toLocaleString('fr-FR')} Ar`} />
-        <Metric label="Ecart" value={`${dashboard.difference.toLocaleString('fr-FR')} Ar`} />
+        <Metric label="Ecart de monnaie" value={`${dashboard.difference.toLocaleString('fr-FR')} Ar`} />
       </section>
 
       <section className="surface grid gap-3 p-4 md:grid-cols-[1fr_180px_220px]">
@@ -73,7 +73,7 @@ export function CashPurchasesList() {
 
       <section className="surface overflow-hidden">
         <div className="hidden grid-cols-[150px_130px_1fr_140px_140px_140px_140px_140px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
-          <span>Reference</span><span>Date</span><span>Acheteur / motif</span><span>Demande</span><span>Remis</span><span>Achete</span><span>Ecart</span><span>Statut</span>
+          <span>Reference</span><span>Date</span><span>Acheteur / motif</span><span>Montant demande</span><span>Especes remises</span><span>Total achete</span><span>Ecart monnaie</span><span>Statut</span>
         </div>
         <div className="divide-y divide-slate-200">
           {purchases.map((purchase) => (

@@ -225,13 +225,18 @@ async function replaceInvoiceItems(invoiceId: string, items: InvoiceFormValues['
 
 function buildInvoiceItemRow(invoiceId: string, item: InvoiceFormValues['items'][number]) {
   const amountHt = Number(item.quantity ?? 0) * Number(item.unit_price ?? 0)
+  const invoiceTaxMode = item.invoice_tax_mode || 'invoice_with_recoverable_vat'
+  const vatRate = Number(item.vat_rate ?? 20)
+  const vatAmount = ['invoice_with_recoverable_vat', 'invoice_ttc_vat_not_recoverable'].includes(invoiceTaxMode)
+    ? amountHt * vatRate / 100
+    : 0
   const cost = calculateMaterialCost({
     amountHt,
-    vatAmount: 0,
-    amountTtc: amountHt,
+    vatAmount,
+    amountTtc: amountHt + vatAmount,
     quantityStock: item.quantity,
-    invoiceTaxMode: item.invoice_tax_mode as never,
-    vatRate: item.vat_rate,
+    invoiceTaxMode: invoiceTaxMode as never,
+    vatRate,
     vatRecoverable: item.vat_recoverable,
     declaredExtraTaxRate: item.declared_extra_tax_rate,
     declaredExtraTaxAmount: item.declared_extra_tax_amount,
@@ -244,7 +249,7 @@ function buildInvoiceItemRow(invoiceId: string, item: InvoiceFormValues['items']
     unit_id: item.unit_id,
     unit_price: item.unit_price,
     supplier_tax_status: item.supplier_tax_status || null,
-    invoice_tax_mode: item.invoice_tax_mode || 'invoice_with_recoverable_vat',
+    invoice_tax_mode: invoiceTaxMode,
     invoice_amount_ht: cost.invoice_amount_ht,
     invoice_vat_amount: cost.invoice_vat_amount,
     invoice_amount_ttc: cost.invoice_amount_ttc,
