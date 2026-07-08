@@ -6,6 +6,7 @@ import { addInvoicePayment, closeInvoice, contestInvoice, getInvoice, validateIn
 import { useAuth } from '../../hooks/useAuth'
 import { exportInvoiceToPdf } from '../../lib/invoiceExports'
 import { canManageInvoices, canPayInvoices, invoiceStatusLabels, paymentModeLabels, paymentModes } from '../../lib/invoices'
+import { effectiveCostMethodLabels, invoiceTaxModeLabels } from '../../lib/materialCosts'
 import type { Invoice, InvoicePaymentFormValues } from '../../lib/invoices'
 
 const today = new Date().toISOString().slice(0, 10)
@@ -92,6 +93,30 @@ export function InvoiceDetail() {
         <Metric label="Echeance" value={new Date(invoice.due_date).toLocaleDateString('fr-FR')} />
       </section>
 
+      <section className="grid gap-4 md:grid-cols-2">
+        <div className="surface p-5">
+          <p className="eyebrow">Lecture comptable / fiscale</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <Info label="HT" value={`${Number(invoice.amount_ht ?? 0).toLocaleString('fr-FR')} Ar`} />
+            <Info label="TVA" value={`${Number(invoice.amount_tva ?? 0).toLocaleString('fr-FR')} Ar`} />
+            <Info label="TTC" value={`${Number(invoice.amount_ttc ?? 0).toLocaleString('fr-FR')} Ar`} />
+            <Info label="TVA recuperable" value={`${Number(invoice.recoverable_vat_amount ?? 0).toLocaleString('fr-FR')} Ar`} />
+            <Info label="TVA non recuperable" value={`${Number(invoice.non_recoverable_vat_amount ?? 0).toLocaleString('fr-FR')} Ar`} />
+            <Info label="Charge declarative" value={`${Number(invoice.declared_extra_tax_amount ?? 0).toLocaleString('fr-FR')} Ar`} />
+          </div>
+        </div>
+        <div className="surface p-5">
+          <p className="eyebrow">Lecture gestion interne</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <Info label="Mode fiscal" value={invoice.invoice_tax_mode ? invoiceTaxModeLabels[invoice.invoice_tax_mode] : '-'} />
+            <Info label="Methode cout" value={invoice.effective_cost_method ? effectiveCostMethodLabels[invoice.effective_cost_method] : '-'} />
+            <Info label="Cout matiere interne" value={`${Number(invoice.effective_material_cost_total ?? invoice.amount_ht ?? 0).toLocaleString('fr-FR')} Ar`} />
+            <Info label="Source" value={invoice.effective_cost_source || '-'} />
+          </div>
+          {invoice.effective_cost_note && <p className="mt-3 text-sm text-slate-600">{invoice.effective_cost_note}</p>}
+        </div>
+      </section>
+
       <section className="surface grid gap-4 p-5 md:grid-cols-2">
         <Info label="Fournisseur" value={invoice.suppliers?.name || '-'} />
         <Info label="Numero facture" value={invoice.invoice_number} />
@@ -134,11 +159,12 @@ export function InvoiceDetail() {
         <div className="border-b border-slate-200 px-5 py-4"><h2 className="text-lg font-bold">Articles</h2></div>
         <div className="divide-y divide-slate-200">
           {invoice.invoice_items?.map((item) => (
-            <div key={item.id} className="grid gap-3 px-5 py-4 md:grid-cols-[1fr_130px_130px_130px] md:items-center">
+            <div key={item.id} className="grid gap-3 px-5 py-4 md:grid-cols-[1fr_120px_130px_130px_160px] md:items-center">
               <span className="font-semibold">{item.articles?.name}</span>
               <span>{Number(item.quantity).toLocaleString('fr-FR')} {item.units?.abbreviation}</span>
               <span>{Number(item.unit_price).toLocaleString('fr-FR')} Ar</span>
               <span>{Number(item.total ?? 0).toLocaleString('fr-FR')} Ar</span>
+              <span className="text-sm font-semibold text-[#1E3A8A]">{Number(item.effective_material_unit_cost ?? item.unit_price ?? 0).toLocaleString('fr-FR')} Ar cout interne</span>
             </div>
           ))}
           {(invoice.invoice_items?.length ?? 0) === 0 && <p className="p-5 text-sm text-slate-600">Aucun article.</p>}

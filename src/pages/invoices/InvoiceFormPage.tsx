@@ -9,6 +9,8 @@ import { useAuth } from '../../hooks/useAuth'
 import type { Article } from '../../lib/catalog'
 import { calculateInvoiceItemsTotal, paymentModeLabels, paymentModes } from '../../lib/invoices'
 import type { InvoiceFormValues } from '../../lib/invoices'
+import { calculateMaterialCost, invoiceTaxModeLabels, invoiceTaxModes } from '../../lib/materialCosts'
+import type { InvoiceTaxMode } from '../../lib/materialCosts'
 import type { Reception } from '../../lib/receptions'
 import type { Supplier } from '../../lib/suppliers'
 
@@ -22,6 +24,12 @@ const emptyForm: InvoiceFormValues = {
   due_date: today,
   amount_ht: 0,
   amount_tva: 0,
+  invoice_tax_mode: 'invoice_with_recoverable_vat',
+  vat_rate: 20,
+  vat_recoverable: true,
+  declared_extra_tax_rate: 0,
+  declared_extra_tax_amount: 0,
+  effective_cost_note: '',
   payment_mode: undefined,
   currency: 'Ar',
   comment: '',
@@ -44,6 +52,17 @@ export function InvoiceFormPage() {
   const [file, setFile] = useState<File | undefined>()
   const itemsTotal = useMemo(() => calculateInvoiceItemsTotal(values.items), [values.items])
   const amountTtc = Number(values.amount_ht ?? 0) + Number(values.amount_tva ?? 0)
+  const materialCost = calculateMaterialCost({
+    amountHt: values.amount_ht,
+    vatAmount: values.amount_tva,
+    amountTtc,
+    quantityStock: 1,
+    invoiceTaxMode: values.invoice_tax_mode as InvoiceTaxMode,
+    vatRate: values.vat_rate,
+    vatRecoverable: values.vat_recoverable,
+    declaredExtraTaxRate: values.declared_extra_tax_rate,
+    declaredExtraTaxAmount: values.declared_extra_tax_amount,
+  })
   const selectedReception = receptions.find((reception) => reception.id === values.reception_id)
   const receptionDifference = selectedReception ? amountTtc - Number(selectedReception.total_amount ?? 0) : 0
 
@@ -55,6 +74,11 @@ export function InvoiceFormPage() {
       invoice_date: reception.invoice_date,
       due_date: current.due_date || reception.invoice_date,
       amount_ht: Number(reception.total_amount ?? 0),
+      invoice_tax_mode: current.invoice_tax_mode ?? 'invoice_with_recoverable_vat',
+      vat_rate: current.vat_rate ?? 20,
+      vat_recoverable: current.vat_recoverable ?? true,
+      declared_extra_tax_rate: current.declared_extra_tax_rate ?? 0,
+      declared_extra_tax_amount: current.declared_extra_tax_amount ?? 0,
       reception_id: reception.id,
       purchase_order_id: reception.purchase_order_id ?? '',
       cash_purchase_id: reception.cash_purchase_id ?? '',
@@ -63,6 +87,13 @@ export function InvoiceFormPage() {
         quantity: Number(item.quantity_accepted ?? 0),
         unit_id: item.unit_id,
         unit_price: Number(item.unit_price_real ?? 0),
+        supplier_tax_status: item.supplier_tax_status ?? undefined,
+        invoice_tax_mode: item.invoice_tax_mode ?? undefined,
+        vat_rate: Number(item.vat_rate ?? 20),
+        vat_recoverable: item.vat_recoverable ?? true,
+        declared_extra_tax_rate: Number(item.declared_extra_tax_rate ?? 0),
+        declared_extra_tax_amount: Number(item.declared_extra_tax_amount ?? 0),
+        effective_cost_note: item.effective_cost_note ?? '',
         comment: '',
       })) ?? [],
     }))
@@ -88,6 +119,12 @@ export function InvoiceFormPage() {
         due_date: invoice.due_date,
         amount_ht: Number(invoice.amount_ht ?? 0),
         amount_tva: Number(invoice.amount_tva ?? 0),
+        invoice_tax_mode: invoice.invoice_tax_mode ?? 'invoice_with_recoverable_vat',
+        vat_rate: Number(invoice.vat_rate ?? 20),
+        vat_recoverable: invoice.vat_recoverable ?? true,
+        declared_extra_tax_rate: Number(invoice.declared_extra_tax_rate ?? 0),
+        declared_extra_tax_amount: Number(invoice.declared_extra_tax_amount ?? 0),
+        effective_cost_note: invoice.effective_cost_note ?? '',
         payment_mode: invoice.payment_mode ?? undefined,
         currency: 'Ar',
         comment: invoice.comment ?? '',
@@ -99,6 +136,13 @@ export function InvoiceFormPage() {
           quantity: Number(item.quantity ?? 0),
           unit_id: item.unit_id,
           unit_price: Number(item.unit_price ?? 0),
+          supplier_tax_status: item.supplier_tax_status ?? undefined,
+          invoice_tax_mode: item.invoice_tax_mode ?? undefined,
+          vat_rate: Number(item.vat_rate ?? 20),
+          vat_recoverable: item.vat_recoverable ?? true,
+          declared_extra_tax_rate: Number(item.declared_extra_tax_rate ?? 0),
+          declared_extra_tax_amount: Number(item.declared_extra_tax_amount ?? 0),
+          effective_cost_note: item.effective_cost_note ?? '',
           comment: item.comment ?? '',
         })) ?? [],
       })
@@ -160,6 +204,41 @@ export function InvoiceFormPage() {
         <label className="block"><span className="field-label">Mode paiement prevu</span><select value={values.payment_mode ?? ''} onChange={(event) => setValues((current) => ({ ...current, payment_mode: event.target.value as InvoiceFormValues['payment_mode'] || undefined }))} className="input mt-2"><option value="">Non defini</option>{paymentModes.map((mode) => <option key={mode} value={mode}>{paymentModeLabels[mode]}</option>)}</select></label>
         <label className="block"><span className="field-label">Piece jointe obligatoire</span><label className="btn-secondary mt-2 cursor-pointer"><Upload className="mr-2 h-4 w-4" /> {file?.name ?? 'Choisir fichier'}<input type="file" accept="image/*,.pdf" required={!isEdit} onChange={(event) => setFile(event.target.files?.[0])} className="hidden" /></label>{!isEdit && <p className="mt-1 text-xs font-semibold text-amber-700">Obligatoire pour creer la facture.</p>}</label>
         <label className="block md:col-span-2"><span className="field-label">Commentaire</span><textarea value={values.comment} onChange={(event) => setValues((current) => ({ ...current, comment: event.target.value }))} className="input mt-2 min-h-24" /></label>
+      </section>
+
+      <section className="surface grid gap-4 p-5 md:grid-cols-2">
+        <div className="md:col-span-2">
+          <p className="eyebrow">Lecture fiscale / cout matiere</p>
+          <h2 className="mt-2 text-lg font-bold text-slate-950">Cout matiere interne retenu</h2>
+        </div>
+        <label className="block">
+          <span className="field-label">Mode fiscal</span>
+          <select value={values.invoice_tax_mode ?? 'invoice_with_recoverable_vat'} onChange={(event) => setValues((current) => ({ ...current, invoice_tax_mode: event.target.value as InvoiceTaxMode }))} className="input mt-2">
+            {invoiceTaxModes.map((mode) => <option key={mode} value={mode}>{invoiceTaxModeLabels[mode]}</option>)}
+          </select>
+        </label>
+        <label className="block">
+          <span className="field-label">Taux TVA</span>
+          <input type="number" value={values.vat_rate ?? 20} onChange={(event) => setValues((current) => ({ ...current, vat_rate: Number(event.target.value) }))} className="input mt-2" />
+        </label>
+        <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <input type="checkbox" checked={values.vat_recoverable ?? true} onChange={(event) => setValues((current) => ({ ...current, vat_recoverable: event.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[#1E3A8A] focus:ring-[#1E3A8A]" />
+          TVA recuperable
+        </label>
+        <label className="block">
+          <span className="field-label">Charge declarative %</span>
+          <input type="number" value={values.declared_extra_tax_rate ?? 0} onChange={(event) => setValues((current) => ({ ...current, declared_extra_tax_rate: Number(event.target.value) }))} className="input mt-2" />
+        </label>
+        <label className="block md:col-span-2">
+          <span className="field-label">Note cout interne</span>
+          <input value={values.effective_cost_note ?? ''} onChange={(event) => setValues((current) => ({ ...current, effective_cost_note: event.target.value }))} className="input mt-2" placeholder="Motif ou precision si cout exceptionnel" />
+        </label>
+        <div className="rounded-md border border-[#D4AF37]/30 bg-amber-50 p-4 text-sm text-slate-800 md:col-span-2">
+          <p>TVA recuperable : <strong>{materialCost.recoverable_vat_amount.toLocaleString('fr-FR')} Ar</strong></p>
+          <p>TVA non recuperable : <strong>{materialCost.non_recoverable_vat_amount.toLocaleString('fr-FR')} Ar</strong></p>
+          <p>Charge declarative : <strong>{materialCost.declared_extra_tax_amount.toLocaleString('fr-FR')} Ar</strong></p>
+          <p>Cout matiere interne : <strong>{Number(materialCost.effective_material_cost_total ?? 0).toLocaleString('fr-FR')} Ar</strong></p>
+        </div>
       </section>
 
       <section className="surface overflow-hidden">

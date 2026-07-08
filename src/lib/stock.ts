@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { Article, Family, Location, Unit } from './catalog'
 import type { Profile, UserRole } from './validation'
+import type { EffectiveCostMethod } from './materialCosts'
 
 export const movementTypes = ['entree', 'sortie', 'transfert', 'retour', 'perte', 'consommation', 'correction', 'ajustement'] as const
 export const movementStatuses = ['normal', 'retroactif', 'annule', 'en_attente', 'valide'] as const
@@ -65,6 +66,10 @@ export type StockMovement = {
   comment: string | null
   movement_reference: string
   unit_cost: number | null
+  effective_material_unit_cost?: number | null
+  effective_material_cost_total?: number | null
+  effective_cost_method?: EffectiveCostMethod | null
+  effective_cost_source?: string | null
   price_source: PriceSourceType
   total_cost: number
   articles?: Pick<Article, 'id' | 'name' | 'min_stock'> & { families?: Pick<Family, 'id' | 'name'> }
@@ -97,6 +102,8 @@ export type PriceHistoryRow = {
   unit_cost: number
   quantity: number
   price_source: PriceSourceType
+  effective_cost_method?: EffectiveCostMethod | null
+  effective_cost_source?: string | null
   reference_type: string | null
   reference_id: string | null
   movement_reference: string

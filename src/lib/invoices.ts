@@ -3,6 +3,7 @@ import type { Article, Unit } from './catalog'
 import type { Reception } from './receptions'
 import type { Supplier } from './suppliers'
 import type { Profile, UserRole } from './validation'
+import type { EffectiveCostMethod, InvoiceTaxMode, SupplierTaxStatus } from './materialCosts'
 
 export const invoiceStatuses = ['a_verifier', 'validee', 'a_payer', 'payee', 'partiellement_paye', 'conteste', 'cloturee', 'annulee'] as const
 export const paymentModes = ['especes', 'virement', 'mobile_money', 'cheque', 'credit_fournisseur', 'autre'] as const
@@ -37,6 +38,23 @@ export type InvoiceItem = {
   quantity: number
   unit_id: string
   unit_price: number
+  supplier_tax_status?: SupplierTaxStatus | null
+  invoice_tax_mode?: InvoiceTaxMode | null
+  invoice_amount_ht?: number | null
+  invoice_vat_amount?: number | null
+  invoice_amount_ttc?: number | null
+  vat_rate?: number | null
+  vat_recoverable?: boolean | null
+  recoverable_vat_amount?: number | null
+  non_recoverable_vat_amount?: number | null
+  declared_extra_tax_rate?: number | null
+  declared_extra_tax_amount?: number | null
+  accounting_total_amount?: number | null
+  effective_material_cost_total?: number | null
+  effective_material_unit_cost?: number | null
+  effective_cost_method?: EffectiveCostMethod | null
+  effective_cost_source?: string | null
+  effective_cost_note?: string | null
   total?: number
   comment?: string | null
   articles?: Pick<Article, 'id' | 'name'> & { families?: { id: string; name: string } }
@@ -77,6 +95,19 @@ export type Invoice = {
   amount_ht: number
   amount_tva: number
   amount_ttc: number
+  supplier_tax_status?: SupplierTaxStatus | null
+  invoice_tax_mode?: InvoiceTaxMode | null
+  vat_rate?: number | null
+  vat_recoverable?: boolean | null
+  recoverable_vat_amount?: number | null
+  non_recoverable_vat_amount?: number | null
+  declared_extra_tax_rate?: number | null
+  declared_extra_tax_amount?: number | null
+  accounting_total_amount?: number | null
+  effective_material_cost_total?: number | null
+  effective_cost_method?: EffectiveCostMethod | null
+  effective_cost_source?: string | null
+  effective_cost_note?: string | null
   amount_paid: number
   amount_remaining: number
   reception_id: string | null
@@ -109,6 +140,13 @@ export const invoiceItemSchema = z.object({
   quantity: z.number().positive('La quantite doit etre superieure a 0'),
   unit_id: z.string().min(1, "L'unite est obligatoire"),
   unit_price: z.number().min(0, 'Le prix ne peut pas etre negatif'),
+  supplier_tax_status: z.string().optional(),
+  invoice_tax_mode: z.string().optional(),
+  vat_rate: z.number().min(0).optional(),
+  vat_recoverable: z.boolean().optional(),
+  declared_extra_tax_rate: z.number().min(0).optional(),
+  declared_extra_tax_amount: z.number().min(0).optional(),
+  effective_cost_note: z.string().optional(),
   comment: z.string().optional(),
 })
 
@@ -120,6 +158,13 @@ export const invoiceSchema = z.object({
   due_date: z.string().min(1, "Date d'echeance obligatoire"),
   amount_ht: z.number().min(0),
   amount_tva: z.number().min(0),
+  supplier_tax_status: z.string().optional(),
+  invoice_tax_mode: z.string().optional(),
+  vat_rate: z.number().min(0).optional(),
+  vat_recoverable: z.boolean().optional(),
+  declared_extra_tax_rate: z.number().min(0).optional(),
+  declared_extra_tax_amount: z.number().min(0).optional(),
+  effective_cost_note: z.string().optional(),
   payment_mode: z.enum(paymentModes).optional(),
   currency: z.string().default('Ar'),
   comment: z.string().optional(),

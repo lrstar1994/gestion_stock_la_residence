@@ -5,6 +5,7 @@ type ConversionInput = {
   quantity: number
   displayUnit?: Pick<Unit, 'id' | 'name' | 'abbreviation'> | null
   stockUnit?: Pick<Unit, 'id' | 'name' | 'abbreviation'> | null
+  manualConversionFactor?: number | null
 }
 
 export type IngredientConversionResult = {
@@ -48,11 +49,13 @@ export function getUnitConversionFactor(displayUnit?: Pick<Unit, 'name' | 'abbre
   return null
 }
 
-export function convertIngredientQuantity({ quantity, displayUnit, stockUnit }: ConversionInput): IngredientConversionResult {
-  const factor = getUnitConversionFactor(displayUnit, stockUnit)
+export function convertIngredientQuantity({ quantity, displayUnit, stockUnit, manualConversionFactor }: ConversionInput): IngredientConversionResult {
+  const automaticFactor = getUnitConversionFactor(displayUnit, stockUnit)
+  const manualFactor = Number(manualConversionFactor ?? 0)
+  const factor = automaticFactor ?? (manualFactor > 0 ? manualFactor : null)
 
   if (!factor) {
-    throw new Error(`Conversion impossible de ${formatUnit(displayUnit)} vers ${formatUnit(stockUnit)}`)
+    throw new Error(`Conversion impossible de ${formatUnit(displayUnit)} vers ${formatUnit(stockUnit)}. Veuillez renseigner un facteur manuel.`)
   }
 
   return {
@@ -80,6 +83,7 @@ export function calculateRecipeTotalsWithConversions(
       quantity: ingredient.quantity,
       displayUnit,
       stockUnit,
+      manualConversionFactor: ingredient.conversion_factor,
     })
 
     return sum + conversion.quantityStored * ingredient.unit_price
@@ -101,6 +105,7 @@ export function getIngredientConversionPreview(ingredient: RecipeIngredientFormV
     quantity: ingredient.quantity,
     displayUnit,
     stockUnit,
+    manualConversionFactor: ingredient.conversion_factor,
   })
 }
 

@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase'
 import { compressReceiptFile } from '../../lib/imageCompression'
+import { calculateMaterialCost } from '../../lib/materialCosts'
 import type { Invoice, InvoiceFormValues, InvoicePaymentFormValues, InvoiceStatus, PaymentMode } from '../../lib/invoices'
 
 const INVOICE_FILES_BUCKET = 'invoice-files'
@@ -82,6 +83,17 @@ export async function createInvoice(values: InvoiceFormValues, profileId?: strin
   if (!file) throw new Error('Veuillez ajouter une piece jointe')
   const reference = values.reference?.trim() || await generateInvoiceReference(values.invoice_date)
   const uploaded = file ? await uploadInvoiceFile(reference, file) : null
+  const headerCost = calculateMaterialCost({
+    amountHt: values.amount_ht,
+    vatAmount: values.amount_tva,
+    amountTtc: Number(values.amount_ht ?? 0) + Number(values.amount_tva ?? 0),
+    quantityStock: 1,
+    invoiceTaxMode: values.invoice_tax_mode as never,
+    vatRate: values.vat_rate,
+    vatRecoverable: values.vat_recoverable,
+    declaredExtraTaxRate: values.declared_extra_tax_rate,
+    declaredExtraTaxAmount: values.declared_extra_tax_amount,
+  })
 
   const { data, error } = await supabase.schema('stock')
     .from('invoices')
@@ -93,6 +105,19 @@ export async function createInvoice(values: InvoiceFormValues, profileId?: strin
       due_date: values.due_date,
       amount_ht: values.amount_ht,
       amount_tva: values.amount_tva,
+      supplier_tax_status: values.supplier_tax_status || null,
+      invoice_tax_mode: values.invoice_tax_mode || 'invoice_with_recoverable_vat',
+      vat_rate: headerCost.vat_rate,
+      vat_recoverable: headerCost.vat_recoverable,
+      recoverable_vat_amount: headerCost.recoverable_vat_amount,
+      non_recoverable_vat_amount: headerCost.non_recoverable_vat_amount,
+      declared_extra_tax_rate: headerCost.declared_extra_tax_rate,
+      declared_extra_tax_amount: headerCost.declared_extra_tax_amount,
+      accounting_total_amount: headerCost.accounting_total_amount,
+      effective_material_cost_total: headerCost.effective_material_cost_total,
+      effective_cost_method: headerCost.effective_cost_method,
+      effective_cost_source: 'invoice',
+      effective_cost_note: cleanNullable(values.effective_cost_note),
       payment_mode: values.payment_mode || null,
       comment: cleanNullable(values.comment),
       reception_id: values.reception_id || null,
@@ -121,6 +146,17 @@ export async function updateInvoice(id: string, values: InvoiceFormValues, profi
   validateInvoice(values)
   const reference = values.reference?.trim() || current.reference
   const uploaded = file ? await uploadInvoiceFile(current.reference, file) : null
+  const headerCost = calculateMaterialCost({
+    amountHt: values.amount_ht,
+    vatAmount: values.amount_tva,
+    amountTtc: Number(values.amount_ht ?? 0) + Number(values.amount_tva ?? 0),
+    quantityStock: 1,
+    invoiceTaxMode: values.invoice_tax_mode as never,
+    vatRate: values.vat_rate,
+    vatRecoverable: values.vat_recoverable,
+    declaredExtraTaxRate: values.declared_extra_tax_rate,
+    declaredExtraTaxAmount: values.declared_extra_tax_amount,
+  })
 
   const { error } = await supabase.schema('stock')
     .from('invoices')
@@ -132,6 +168,19 @@ export async function updateInvoice(id: string, values: InvoiceFormValues, profi
       due_date: values.due_date,
       amount_ht: values.amount_ht,
       amount_tva: values.amount_tva,
+      supplier_tax_status: values.supplier_tax_status || null,
+      invoice_tax_mode: values.invoice_tax_mode || 'invoice_with_recoverable_vat',
+      vat_rate: headerCost.vat_rate,
+      vat_recoverable: headerCost.vat_recoverable,
+      recoverable_vat_amount: headerCost.recoverable_vat_amount,
+      non_recoverable_vat_amount: headerCost.non_recoverable_vat_amount,
+      declared_extra_tax_rate: headerCost.declared_extra_tax_rate,
+      declared_extra_tax_amount: headerCost.declared_extra_tax_amount,
+      accounting_total_amount: headerCost.accounting_total_amount,
+      effective_material_cost_total: headerCost.effective_material_cost_total,
+      effective_cost_method: headerCost.effective_cost_method,
+      effective_cost_source: 'invoice',
+      effective_cost_note: cleanNullable(values.effective_cost_note),
       payment_mode: values.payment_mode || null,
       comment: cleanNullable(values.comment),
       reception_id: values.reception_id || null,
@@ -168,15 +217,51 @@ async function replaceInvoiceItems(invoiceId: string, items: InvoiceFormValues['
   if (items.length === 0) return
 
   const rows = items.map((item) => ({
+    ...buildInvoiceItemRow(invoiceId, item),
+  }))
+  const { error } = await supabase.schema('stock').from('invoice_items').insert(rows)
+  if (error) throw error
+}
+
+function buildInvoiceItemRow(invoiceId: string, item: InvoiceFormValues['items'][number]) {
+  const amountHt = Number(item.quantity ?? 0) * Number(item.unit_price ?? 0)
+  const cost = calculateMaterialCost({
+    amountHt,
+    vatAmount: 0,
+    amountTtc: amountHt,
+    quantityStock: item.quantity,
+    invoiceTaxMode: item.invoice_tax_mode as never,
+    vatRate: item.vat_rate,
+    vatRecoverable: item.vat_recoverable,
+    declaredExtraTaxRate: item.declared_extra_tax_rate,
+    declaredExtraTaxAmount: item.declared_extra_tax_amount,
+  })
+
+  return {
     invoice_id: invoiceId,
     article_id: item.article_id,
     quantity: item.quantity,
     unit_id: item.unit_id,
     unit_price: item.unit_price,
+    supplier_tax_status: item.supplier_tax_status || null,
+    invoice_tax_mode: item.invoice_tax_mode || 'invoice_with_recoverable_vat',
+    invoice_amount_ht: cost.invoice_amount_ht,
+    invoice_vat_amount: cost.invoice_vat_amount,
+    invoice_amount_ttc: cost.invoice_amount_ttc,
+    vat_rate: cost.vat_rate,
+    vat_recoverable: cost.vat_recoverable,
+    recoverable_vat_amount: cost.recoverable_vat_amount,
+    non_recoverable_vat_amount: cost.non_recoverable_vat_amount,
+    declared_extra_tax_rate: cost.declared_extra_tax_rate,
+    declared_extra_tax_amount: cost.declared_extra_tax_amount,
+    accounting_total_amount: cost.accounting_total_amount,
+    effective_material_cost_total: cost.effective_material_cost_total ?? amountHt,
+    effective_material_unit_cost: cost.effective_material_unit_cost ?? item.unit_price,
+    effective_cost_method: cost.effective_cost_method,
+    effective_cost_source: 'invoice',
+    effective_cost_note: cleanNullable(item.effective_cost_note),
     comment: cleanNullable(item.comment),
-  }))
-  const { error } = await supabase.schema('stock').from('invoice_items').insert(rows)
-  if (error) throw error
+  }
 }
 
 async function generateInvoiceReference(invoiceDate: string) {

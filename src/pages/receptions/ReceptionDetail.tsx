@@ -9,7 +9,7 @@ import { anomalyTypeLabels, canCreateReceptions, canValidateReceptionWithAnomali
 import type { Reception } from '../../lib/receptions'
 
 const receptionComparisonGrid =
-  'grid min-w-[1400px] grid-cols-[1.4fr_120px_120px_120px_120px_130px_130px_130px_140px_140px_120px] items-center gap-4 px-5'
+  'grid min-w-[1560px] grid-cols-[1.4fr_120px_120px_120px_120px_130px_130px_130px_140px_140px_160px_120px] items-center gap-4 px-5'
 
 export function ReceptionDetail() {
   const { id } = useParams()
@@ -171,6 +171,7 @@ export function ReceptionDetail() {
             <span>Ecart prix</span>
             <span>Total prevu</span>
             <span>Total reel</span>
+            <span>Cout interne</span>
             <span>Statut</span>
           </div>
           <div className="divide-y divide-slate-200">
@@ -206,6 +207,10 @@ export function ReceptionDetail() {
                     </span>
                     <span>{formatMoney(plannedTotal)}</span>
                     <span className="font-semibold text-slate-950">{formatMoney(realTotal)}</span>
+                    <span>
+                      <span className="block font-semibold text-[#1E3A8A]">{formatMoney(item.effective_material_unit_cost ?? item.unit_price_real)} / {stockUnit}</span>
+                      <span className="text-xs text-slate-500">{formatMoney(item.effective_material_cost_total ?? acceptedQuantity * Number(item.unit_price_real ?? 0))} total</span>
+                    </span>
                     <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${isConform ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>
                       {isConform ? 'Conforme' : 'Ecart'}
                     </span>

@@ -4,14 +4,29 @@ import { useEffect, useMemo, useState } from 'react'
 import { useFieldArray, useForm, useWatch } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { listArticles, listUnits } from '../../api/modules/catalog.api'
+import { listArticles, listFamilies, listSubCategories, listUnits } from '../../api/modules/catalog.api'
 import { createRecipe, getRecipe, updateRecipe } from '../../api/modules/recipes.api'
 import { useAuth } from '../../hooks/useAuth'
 import { getErrorMessage } from '../../lib/errors'
 import { mainIngredientLabels, recipeMainIngredients, recipeSchema, recipeTagLabels, recipeTags, recipeTypeLabels, recipeTypes } from '../../lib/recipes'
-import { calculateRecipeTotalsWithConversions, getIngredientConversionPreview } from '../../lib/unitConversions'
-import type { Article, Unit } from '../../lib/catalog'
+import { calculateRecipeTotalsWithConversions, getIngredientConversionPreview, getUnitConversionFactor } from '../../lib/unitConversions'
+import type { Article, Family, SubCategory, Unit } from '../../lib/catalog'
 import type { RecipeFormValues, RecipeIngredientFormValues } from '../../lib/recipes'
+
+type IngredientArticleFilter = {
+  familyId: string
+  subCategoryName: string
+}
+
+function getEmptyIngredientArticleFilter(): IngredientArticleFilter {
+  return { familyId: 'all', subCategoryName: 'all' }
+}
+
+function articleMatchesIngredientFilter(article: Article, filter: IngredientArticleFilter) {
+  const familyMatches = filter.familyId === 'all' || article.family_id === filter.familyId
+  const subCategoryMatches = filter.subCategoryName === 'all' || article.sub_family === filter.subCategoryName
+  return familyMatches && subCategoryMatches
+}
 
 export function RecipeFormPage() {
   const { id } = useParams()
@@ -19,7 +34,10 @@ export function RecipeFormPage() {
   const navigate = useNavigate()
   const { profile } = useAuth()
   const [articles, setArticles] = useState<Article[]>([])
+  const [families, setFamilies] = useState<Family[]>([])
+  const [subCategories, setSubCategories] = useState<SubCategory[]>([])
   const [units, setUnits] = useState<Unit[]>([])
+  const [ingredientArticleFilters, setIngredientArticleFilters] = useState<Record<string, IngredientArticleFilter>>({})
   const [loading, setLoading] = useState(isEdit)
   const form = useForm<RecipeFormValues>({
     resolver: zodResolver(recipeSchema),
@@ -28,6 +46,10 @@ export function RecipeFormPage() {
   const { fields, append, remove } = useFieldArray({ control: form.control, name: 'ingredients' })
   const watched = useWatch({ control: form.control })
   const watchedIngredients = useMemo(() => (watched.ingredients ?? []) as RecipeIngredientFormValues[], [watched.ingredients])
+  const sortedArticles = useMemo(
+    () => [...articles].sort((first, second) => first.name.localeCompare(second.name, 'fr', { sensitivity: 'base' })),
+    [articles],
+  )
   const conversionErrors = useMemo(() => watchedIngredients.flatMap((ingredient) => {
     if (!ingredient.article_id || !ingredient.unit_id || !ingredient.quantity) return []
     const article = articles.find((item) => item.id === ingredient.article_id)
@@ -52,10 +74,12 @@ export function RecipeFormPage() {
   }, [articles, units, watched.final_price, watched.margin_coefficient, watched.portions, watchedIngredients])
 
   useEffect(() => {
-    Promise.all([listArticles({ status: 'active', pageSize: 1000 }), listUnits()])
-      .then(([articleResult, loadedUnits]) => {
+    Promise.all([listArticles({ status: 'active', pageSize: 1000 }), listUnits(), listFamilies(), listSubCategories()])
+      .then(([articleResult, loadedUnits, loadedFamilies, loadedSubCategories]) => {
         setArticles(articleResult.articles)
         setUnits(loadedUnits)
+        setFamilies(loadedFamilies)
+        setSubCategories(loadedSubCategories)
       })
       .catch(() => toast.error('Une erreur est survenue. Veuillez reessayer.'))
   }, [])
@@ -81,6 +105,7 @@ export function RecipeFormPage() {
             quantity: Number(ingredient.quantity_display ?? ingredient.quantity),
             unit_id: ingredient.unit_display ?? ingredient.unit_id,
             unit_price: Number(ingredient.unit_price),
+            conversion_factor: ingredient.conversion_factor ? Number(ingredient.conversion_factor) : null,
             sort_order: index,
           })) ?? [],
         })
@@ -89,7 +114,17 @@ export function RecipeFormPage() {
       .finally(() => setLoading(false))
   }, [form, id])
 
-  const addIngredient = () => append({ article_id: '', quantity: 1, unit_id: '', unit_price: 0, sort_order: fields.length })
+  const addIngredient = () => append({ article_id: '', quantity: 1, unit_id: '', unit_price: 0, conversion_factor: null, sort_order: fields.length })
+
+  const updateIngredientArticleFilter = (rowId: string, index: number, nextFilter: IngredientArticleFilter) => {
+    setIngredientArticleFilters((current) => ({ ...current, [rowId]: nextFilter }))
+    const selectedArticleId = watchedIngredients[index]?.article_id
+    const selectedArticle = articles.find((article) => article.id === selectedArticleId)
+    if (selectedArticle && !articleMatchesIngredientFilter(selectedArticle, nextFilter)) {
+      form.setValue(`ingredients.${index}.article_id`, '')
+      form.setValue(`ingredients.${index}.unit_id`, '')
+    }
+  }
 
   const onSubmit = async (values: RecipeFormValues) => {
     try {
@@ -118,7 +153,6 @@ export function RecipeFormPage() {
         <section className="surface grid gap-5 p-5 lg:grid-cols-2">
           <Field label="Nom"><input {...form.register('name')} className="input mt-2" /></Field>
           <Field label="Type"><select {...form.register('type')} className="input mt-2">{recipeTypes.map((type) => <option key={type} value={type}>{type} - {recipeTypeLabels[type]}</option>)}</select></Field>
-          <Field label="Sous-type"><input {...form.register('sub_type')} className="input mt-2" /></Field>
           <Field label="Matiere principale"><select {...form.register('main_ingredient')} className="input mt-2">{recipeMainIngredients.map((item) => <option key={item} value={item}>{item} - {mainIngredientLabels[item]}</option>)}</select></Field>
           <Field label="Portions"><input {...form.register('portions', { valueAsNumber: true })} type="number" min="1" className="input mt-2" /></Field>
           <Field label="Coefficient marge"><input {...form.register('margin_coefficient', { valueAsNumber: true })} type="number" step="0.1" min="0" className="input mt-2" /></Field>
@@ -130,26 +164,82 @@ export function RecipeFormPage() {
         <section className="surface p-5">
           <div className="flex items-center justify-between gap-3"><h2 className="text-lg font-bold">Ingredients</h2><button type="button" onClick={addIngredient} className="btn-secondary"><Plus className="mr-2 h-4 w-4" /> Ajouter</button></div>
           <div className="mt-4 space-y-3">
-            {fields.map((field, index) => (
-              <div key={field.id} className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[1fr_120px_160px_150px_1fr_110px]">
-                <select {...form.register(`ingredients.${index}.article_id`)} className="input" onChange={(event) => {
-                  form.register(`ingredients.${index}.article_id`).onChange(event)
-                  const article = articles.find((item) => item.id === event.target.value)
-                  if (article?.unit_id) form.setValue(`ingredients.${index}.unit_id`, article.unit_id)
-                }}>
-                  <option value="">Article</option>{articles.map((article) => <option key={article.id} value={article.id}>{article.name}</option>)}
-                </select>
-                <input {...form.register(`ingredients.${index}.quantity`, { valueAsNumber: true })} type="number" min="0" step="0.01" className="input" placeholder="Quantite" />
-                <select {...form.register(`ingredients.${index}.unit_id`)} className="input"><option value="">Unite</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name} ({unit.abbreviation})</option>)}</select>
-                <input {...form.register(`ingredients.${index}.unit_price`, { valueAsNumber: true })} type="number" min="0" step="0.01" className="input" placeholder="Prix unitaire" />
-                <ConversionPreview
-                  ingredient={watchedIngredients[index]}
-                  article={articles.find((item) => item.id === watchedIngredients[index]?.article_id)}
-                  units={units}
-                />
-                <button type="button" onClick={() => window.confirm('Supprimer cet ingredient ?') && remove(index)} className="btn-secondary text-red-700"><Trash2 className="h-4 w-4" /></button>
-              </div>
-            ))}
+            {fields.map((field, index) => {
+              const ingredient = watchedIngredients[index]
+              const selectedArticle = articles.find((item) => item.id === ingredient?.article_id)
+              const displayUnit = units.find((unit) => unit.id === ingredient?.unit_id)
+              const stockUnit = units.find((unit) => unit.id === selectedArticle?.unit_id)
+              const needsManualFactor = Boolean(ingredient?.article_id && ingredient.unit_id && displayUnit && stockUnit && getUnitConversionFactor(displayUnit, stockUnit) === null)
+              const articleFilter = ingredientArticleFilters[field.id] ?? getEmptyIngredientArticleFilter()
+              const availableSubCategories = subCategories.filter((subCategory) => articleFilter.familyId === 'all' || subCategory.family_id === articleFilter.familyId)
+              const filteredArticles = sortedArticles.filter((article) => articleMatchesIngredientFilter(article, articleFilter))
+
+              return (
+                <div key={field.id} className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 xl:grid-cols-[150px_170px_minmax(220px,1fr)_110px_150px_130px_140px_minmax(180px,1fr)_90px]">
+                  <select
+                    value={articleFilter.familyId}
+                    className="input"
+                    onChange={(event) => {
+                      updateIngredientArticleFilter(field.id, index, {
+                        familyId: event.target.value,
+                        subCategoryName: 'all',
+                      })
+                    }}
+                  >
+                    <option value="all">Toutes categories</option>
+                    {families.map((family) => <option key={family.id} value={family.id}>{family.name}</option>)}
+                  </select>
+                  <select
+                    value={articleFilter.subCategoryName}
+                    className="input"
+                    onChange={(event) => {
+                      updateIngredientArticleFilter(field.id, index, {
+                        ...articleFilter,
+                        subCategoryName: event.target.value,
+                      })
+                    }}
+                  >
+                    <option value="all">Toutes sous-categories</option>
+                    {availableSubCategories.map((subCategory) => <option key={subCategory.id} value={subCategory.name}>{subCategory.name}</option>)}
+                  </select>
+                  <select {...form.register(`ingredients.${index}.article_id`)} className="input" onChange={(event) => {
+                    form.register(`ingredients.${index}.article_id`).onChange(event)
+                    const article = articles.find((item) => item.id === event.target.value)
+                    if (article?.unit_id) form.setValue(`ingredients.${index}.unit_id`, article.unit_id)
+                  }}>
+                    <option value="">Article</option>{filteredArticles.map((article) => <option key={article.id} value={article.id}>{article.name}</option>)}
+                  </select>
+                  <input {...form.register(`ingredients.${index}.quantity`, { valueAsNumber: true })} type="number" min="0" step="0.01" className="input" placeholder="Quantite" />
+                  <select {...form.register(`ingredients.${index}.unit_id`)} className="input"><option value="">Unite</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name} ({unit.abbreviation})</option>)}</select>
+                  <input {...form.register(`ingredients.${index}.unit_price`, { valueAsNumber: true })} type="number" min="0" step="0.01" className="input" placeholder="Prix unitaire" />
+                  {needsManualFactor ? (
+                    <label className="block">
+                      <input
+                        {...form.register(`ingredients.${index}.conversion_factor`, {
+                          setValueAs: (value) => {
+                            if (value === '' || value == null) return null
+                            const parsed = Number(value)
+                            return Number.isNaN(parsed) ? null : parsed
+                          },
+                        })}
+                        type="number"
+                        min="0"
+                        step="0.000001"
+                        className="input"
+                        placeholder="Facteur"
+                      />
+                      <span className="mt-1 block text-[11px] font-semibold text-amber-700">
+                        1 {displayUnit?.abbreviation || displayUnit?.name} = facteur x {stockUnit?.abbreviation || stockUnit?.name}
+                      </span>
+                    </label>
+                  ) : (
+                    <p className="rounded-md bg-white px-3 py-2 text-xs text-slate-500">Facteur auto</p>
+                  )}
+                  <ConversionPreview ingredient={ingredient} article={selectedArticle} units={units} />
+                  <button type="button" onClick={() => window.confirm('Supprimer cet ingredient ?') && remove(index)} className="btn-secondary text-red-700"><Trash2 className="h-4 w-4" /></button>
+                </div>
+              )
+            })}
           </div>
         </section>
 

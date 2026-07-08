@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { getRecipe, listRecipeVersions, setRecipeArchived, submitRecipeForValidation, validateRecipe } from '../../api/modules/recipes.api'
+import { getPriceHistory } from '../../api/modules/stock.api'
 import { useAuth } from '../../hooks/useAuth'
 import { getErrorMessage } from '../../lib/errors'
 import { exportRecipeToPdf } from '../../lib/recipeExports'
@@ -15,6 +16,7 @@ export function RecipeDetail() {
   const { profile } = useAuth()
   const [recipe, setRecipe] = useState<Recipe | null>(null)
   const [versions, setVersions] = useState<Recipe[]>([])
+  const [currentCosts, setCurrentCosts] = useState<Record<string, number>>({})
   const canEdit = canEditRecipes(profile?.role) && recipe?.status !== 'archived'
   const canValidate = canValidateRecipes(profile?.role)
 
@@ -24,6 +26,9 @@ export function RecipeDetail() {
       const loadedRecipe = await getRecipe(id)
       setRecipe(loadedRecipe)
       setVersions(await listRecipeVersions(loadedRecipe))
+      const articleIds = Array.from(new Set((loadedRecipe.recipe_ingredients ?? []).map((ingredient) => ingredient.article_id).filter(Boolean)))
+      const histories = await Promise.all(articleIds.map(async (articleId) => ({ articleId, history: await getPriceHistory(articleId) })))
+      setCurrentCosts(Object.fromEntries(histories.map((item) => [item.articleId, Number(item.history[0]?.unit_cost ?? 0)]).filter(([, cost]) => Number(cost) > 0)))
     } catch (error) {
       toast.error(getErrorMessage(error, 'Fiche technique introuvable'))
       navigate('/recipes')
@@ -129,22 +134,33 @@ export function RecipeDetail() {
       </section>
 
       <section className="surface overflow-hidden">
-        <div className="grid grid-cols-[1fr_150px_150px_150px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-          <span>Article</span><span>Quantite</span><span>Prix unitaire</span><span>Cout</span>
+        <div className="grid grid-cols-[1fr_150px_150px_150px_180px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+          <span>Article</span><span>Quantite</span><span>Prix historique</span><span>Cout</span><span>Cout actuel</span>
         </div>
         <div className="divide-y divide-slate-200">
-          {recipe.recipe_ingredients?.map((ingredient) => (
-            <div key={ingredient.id} className="grid grid-cols-[1fr_150px_150px_150px] gap-4 px-5 py-3 text-sm">
-              <span className="font-semibold">{ingredient.articles?.name || ingredient.imported_name}</span>
-              <span>
-                {Number(ingredient.quantity_display ?? ingredient.quantity).toLocaleString('fr-FR')} {ingredient.display_unit?.abbreviation || ingredient.units?.abbreviation || ingredient.unit_name}
-                {' '}
-                ({Number(ingredient.quantity_stored ?? ingredient.quantity).toLocaleString('fr-FR')} {ingredient.stored_unit?.abbreviation || ingredient.articles?.units?.abbreviation || ''})
-              </span>
-              <span>{Number(ingredient.unit_price).toLocaleString('fr-FR')} Ar</span>
-              <span>{Number(ingredient.total_cost).toLocaleString('fr-FR')} Ar</span>
-            </div>
-          ))}
+          {recipe.recipe_ingredients?.map((ingredient) => {
+            const currentCost = currentCosts[ingredient.article_id]
+            const historicalCost = Number(ingredient.unit_price ?? 0)
+            const gap = currentCost && historicalCost > 0 ? ((currentCost - historicalCost) / historicalCost) * 100 : 0
+            const obsolete = Math.abs(gap) >= 15
+
+            return (
+              <div key={ingredient.id} className="grid grid-cols-[1fr_150px_150px_150px_180px] gap-4 px-5 py-3 text-sm">
+                <span className="font-semibold">{ingredient.articles?.name || ingredient.imported_name}</span>
+                <span>
+                  {Number(ingredient.quantity_display ?? ingredient.quantity).toLocaleString('fr-FR')} {ingredient.display_unit?.abbreviation || ingredient.units?.abbreviation || ingredient.unit_name}
+                  {' '}
+                  ({Number(ingredient.quantity_stored ?? ingredient.quantity).toLocaleString('fr-FR')} {ingredient.stored_unit?.abbreviation || ingredient.articles?.units?.abbreviation || ''})
+                </span>
+                <span>{historicalCost.toLocaleString('fr-FR')} Ar</span>
+                <span>{Number(ingredient.total_cost).toLocaleString('fr-FR')} Ar</span>
+                <span>
+                  {currentCost ? `${currentCost.toLocaleString('fr-FR')} Ar` : '-'}
+                  {obsolete && <span className="mt-1 block rounded-full bg-amber-50 px-2 py-1 text-xs font-bold text-amber-800">Cout potentiellement obsolete ({gap.toFixed(1)}%)</span>}
+                </span>
+              </div>
+            )
+          })}
         </div>
       </section>
 

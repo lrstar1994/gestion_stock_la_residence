@@ -156,6 +156,7 @@ export const recipeIngredientSchema = z.object({
   quantity: z.number().positive('Quantite obligatoire'),
   unit_id: z.string().min(1, 'Unite obligatoire'),
   unit_price: z.number().positive('Le prix unitaire doit etre superieur a 0'),
+  conversion_factor: z.number().positive('Le facteur manuel doit etre superieur a 0').optional().nullable(),
   sort_order: z.number(),
 })
 

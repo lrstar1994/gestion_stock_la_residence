@@ -4,6 +4,7 @@ import type { PurchaseOrder } from './purchaseOrders'
 import type { Supplier } from './suppliers'
 import type { Profile, UserRole } from './validation'
 import type { CashPurchase } from './cashPurchases'
+import type { EffectiveCostMethod, InvoiceTaxMode, SupplierTaxStatus } from './materialCosts'
 
 export const receptionStatuses = ['brouillon', 'en_attente', 'validee', 'validee_avec_anomalies', 'entree_stock', 'refusee'] as const
 export const qualityStatuses = ['conforme', 'non_conforme', 'a_verifier'] as const
@@ -90,6 +91,23 @@ export type ReceptionItem = {
   unit_price_planned: number | null
   unit_price_real: number
   unit_price_display?: number | null
+  supplier_tax_status?: SupplierTaxStatus | null
+  invoice_tax_mode?: InvoiceTaxMode | null
+  invoice_amount_ht?: number | null
+  invoice_vat_amount?: number | null
+  invoice_amount_ttc?: number | null
+  vat_rate?: number | null
+  vat_recoverable?: boolean | null
+  recoverable_vat_amount?: number | null
+  non_recoverable_vat_amount?: number | null
+  declared_extra_tax_rate?: number | null
+  declared_extra_tax_amount?: number | null
+  accounting_total_amount?: number | null
+  effective_material_cost_total?: number | null
+  effective_material_unit_cost?: number | null
+  effective_cost_method?: EffectiveCostMethod | null
+  effective_cost_source?: string | null
+  effective_cost_note?: string | null
   total?: number
   quality: QualityStatus
   quality_comment?: string | null
@@ -145,6 +163,13 @@ export const receptionItemSchema = z.object({
   unit_price_planned: z.number().min(0).nullable(),
   unit_price_real: z.number().positive('Le prix réel doit être supérieur à 0'),
   unit_price_display: z.number().min(0).optional(),
+  supplier_tax_status: z.string().optional(),
+  invoice_tax_mode: z.string().optional(),
+  vat_rate: z.number().min(0).optional(),
+  vat_recoverable: z.boolean().optional(),
+  declared_extra_tax_rate: z.number().min(0).optional(),
+  declared_extra_tax_amount: z.number().min(0).optional(),
+  effective_cost_note: z.string().optional(),
   quality: z.enum(qualityStatuses),
   quality_comment: z.string().optional(),
   has_anomaly: z.boolean(),

@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase'
 import { compressReceiptFile } from '../../lib/imageCompression'
 import { calculateReceptionTotal, receptionHasAnomalies } from '../../lib/receptions'
+import { calculateMaterialCost } from '../../lib/materialCosts'
 import { integratePendingReceptionMovements } from './stock.api'
 import type { Reception, ReceptionFormValues, ReceptionStatus } from '../../lib/receptions'
 import type { PurchaseOrder } from '../../lib/purchaseOrders'
@@ -236,6 +237,18 @@ async function replaceReceptionItems(receptionId: string, items: ReceptionFormVa
   if (deleteError) throw deleteError
 
   for (const item of items) {
+    const lineAmountHt = Number(item.quantity_accepted ?? 0) * Number(item.unit_price_real ?? 0)
+    const materialCost = calculateMaterialCost({
+      amountHt: lineAmountHt,
+      vatAmount: 0,
+      amountTtc: lineAmountHt,
+      quantityStock: item.quantity_accepted,
+      invoiceTaxMode: item.invoice_tax_mode as never,
+      vatRate: item.vat_rate,
+      vatRecoverable: item.vat_recoverable,
+      declaredExtraTaxRate: item.declared_extra_tax_rate,
+      declaredExtraTaxAmount: item.declared_extra_tax_amount,
+    })
     const { data, error } = await supabase.schema('stock')
       .from('reception_items')
       .insert({
@@ -252,6 +265,23 @@ async function replaceReceptionItems(receptionId: string, items: ReceptionFormVa
         unit_price_planned: item.unit_price_planned,
         unit_price_real: item.unit_price_real,
         unit_price_display: item.unit_price_display ?? item.unit_price_real,
+        supplier_tax_status: item.supplier_tax_status || null,
+        invoice_tax_mode: item.invoice_tax_mode || 'invoice_with_recoverable_vat',
+        invoice_amount_ht: materialCost.invoice_amount_ht,
+        invoice_vat_amount: materialCost.invoice_vat_amount,
+        invoice_amount_ttc: materialCost.invoice_amount_ttc,
+        vat_rate: materialCost.vat_rate,
+        vat_recoverable: materialCost.vat_recoverable,
+        recoverable_vat_amount: materialCost.recoverable_vat_amount,
+        non_recoverable_vat_amount: materialCost.non_recoverable_vat_amount,
+        declared_extra_tax_rate: materialCost.declared_extra_tax_rate,
+        declared_extra_tax_amount: materialCost.declared_extra_tax_amount,
+        accounting_total_amount: materialCost.accounting_total_amount,
+        effective_material_cost_total: materialCost.effective_material_cost_total ?? lineAmountHt,
+        effective_material_unit_cost: materialCost.effective_material_unit_cost ?? item.unit_price_real,
+        effective_cost_method: materialCost.effective_cost_method,
+        effective_cost_source: 'reception',
+        effective_cost_note: cleanNullable(item.effective_cost_note),
         quality: item.quality,
         quality_comment: cleanNullable(item.quality_comment),
         has_anomaly: item.has_anomaly || (item.anomalies ?? []).length > 0,
@@ -355,6 +385,10 @@ async function applyReceptionSideEffects(id: string, profileId?: string) {
     quantity: item.quantity_accepted,
     unit_id: item.unit_id,
     location_id: reception.location_id,
+    effective_material_unit_cost: item.effective_material_unit_cost ?? item.unit_price_real,
+    effective_material_cost_total: item.effective_material_cost_total ?? Number(item.quantity_accepted ?? 0) * Number(item.unit_price_real ?? 0),
+    effective_cost_method: item.effective_cost_method ?? 'invoice_ht_vat_recoverable',
+    effective_cost_source: item.effective_cost_source ?? 'reception',
     created_by: profileId,
   }))
   if (movementRows.length > 0) {

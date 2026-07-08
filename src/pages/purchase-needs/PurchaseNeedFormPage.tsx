@@ -6,8 +6,19 @@ import { listArticles, listUnits } from '../../api/modules/catalog.api'
 import { createPurchaseNeed } from '../../api/modules/purchaseNeeds.api'
 import { listSuppliers } from '../../api/modules/suppliers.api'
 import { useAuth } from '../../hooks/useAuth'
-import { needOriginLabels, needOrigins, needUrgencies, needUrgencyLabels } from '../../lib/purchaseNeeds'
-import type { NeedOrigin, NeedUrgency, PurchaseNeedFormValues } from '../../lib/purchaseNeeds'
+import {
+  needCalculationSourceLabels,
+  needCalculationSources,
+  needDestinationLabels,
+  needDestinations,
+  needTypeLabels,
+  needTypes,
+  needUrgencies,
+  needUrgencyLabels,
+  requestingServiceLabels,
+  requestingServices,
+} from '../../lib/purchaseNeeds'
+import type { NeedCalculationSource, NeedDestination, NeedType, NeedUrgency, PurchaseNeedFormValues, RequestingService } from '../../lib/purchaseNeeds'
 import type { Article, Unit } from '../../lib/catalog'
 import type { Supplier } from '../../lib/suppliers'
 
@@ -23,6 +34,10 @@ export function PurchaseNeedFormPage() {
     quantity: 1,
     unit_id: '',
     origin: 'demande_manuelle',
+    type_de_besoin: 'besoin_ponctuel',
+    destination_prevue: 'stock_general',
+    source_du_calcul: 'saisie_manuelle',
+    service_demandeur: 'cuisine',
     urgency: 'normal',
     estimated_price: 0,
     price_input_amount: 0,
@@ -102,7 +117,10 @@ export function PurchaseNeedFormPage() {
 
         <Field label="Quantite"><input value={values.quantity} onChange={(event) => update('quantity', Number(event.target.value))} type="number" min="0" step="0.01" className="input mt-2" /></Field>
         <Field label="Unite d'achat"><select value={values.unit_id} onChange={(event) => update('unit_id', event.target.value)} className="input mt-2"><option value="">Selectionner</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.abbreviation}</option>)}</select>{selectedArticle?.units?.abbreviation && <p className="mt-1 text-xs text-slate-500">Unite stock : {selectedArticle.units.abbreviation}</p>}</Field>
-        <Field label="Origine"><select value={values.origin} onChange={(event) => update('origin', event.target.value as NeedOrigin)} className="input mt-2">{needOrigins.map((origin) => <option key={origin} value={origin}>{needOriginLabels[origin]}</option>)}</select></Field>
+        <Field label="Type de besoin"><select value={values.type_de_besoin} onChange={(event) => update('type_de_besoin', event.target.value as NeedType)} className="input mt-2">{needTypes.map((type) => <option key={type} value={type}>{needTypeLabels[type]}</option>)}</select></Field>
+        <Field label="Destination prevue"><select value={values.destination_prevue} onChange={(event) => update('destination_prevue', event.target.value as NeedDestination)} className="input mt-2">{needDestinations.map((destination) => <option key={destination} value={destination}>{needDestinationLabels[destination]}</option>)}</select></Field>
+        <Field label="Source du calcul"><select value={values.source_du_calcul} onChange={(event) => update('source_du_calcul', event.target.value as NeedCalculationSource)} className="input mt-2">{needCalculationSources.map((source) => <option key={source} value={source}>{needCalculationSourceLabels[source]}</option>)}</select></Field>
+        <Field label="Service demandeur"><select value={values.service_demandeur} onChange={(event) => update('service_demandeur', event.target.value as RequestingService)} className="input mt-2">{requestingServices.map((service) => <option key={service} value={service}>{requestingServiceLabels[service]}</option>)}</select></Field>
         <Field label="Urgence"><select value={values.urgency} onChange={(event) => update('urgency', event.target.value as NeedUrgency)} className="input mt-2">{needUrgencies.map((urgency) => <option key={urgency} value={urgency}>{needUrgencyLabels[urgency]}</option>)}</select></Field>
         <Field label="Date souhaitee"><input value={values.requested_date} onChange={(event) => update('requested_date', event.target.value)} type="date" className="input mt-2" /></Field>
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">

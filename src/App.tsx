@@ -33,6 +33,7 @@ import { EventAnalysisPage } from './pages/events/EventAnalysisPage'
 import { EventStatsPage } from './pages/events/EventStatsPage'
 import { PurchaseNeedsList } from './pages/purchase-needs/PurchaseNeedsList'
 import { PurchaseNeedFormPage } from './pages/purchase-needs/PurchaseNeedFormPage'
+import { PurchaseWizardPage } from './pages/purchases/PurchaseWizardPage'
 import { CashPurchasesList } from './pages/cash-purchases/CashPurchasesList'
 import { CashPurchaseFormPage } from './pages/cash-purchases/CashPurchaseFormPage'
 import { CashPurchaseDetail } from './pages/cash-purchases/CashPurchaseDetail'
@@ -133,6 +134,12 @@ function App() {
           <Route path="/events/:id/edit" element={<EventFormPage />} />
           <Route path="/purchase-needs/new" element={<PurchaseNeedFormPage />} />
           <Route path="/cash-purchases/new" element={<CashPurchaseFormPage />} />
+        </Route>
+      </Route>
+
+      <Route element={<ProtectedRoute allowedRoles={['direction', 'chef_cuisine', 'fiche_technique', 'magasinier', 'acheteur', 'maintenance']} />}>
+        <Route element={<AppLayout />}>
+          <Route path="/purchases/new" element={<PurchaseWizardPage />} />
         </Route>
       </Route>
 

@@ -3,17 +3,25 @@ import type { Article } from '../../lib/catalog'
 import type { Supplier } from '../../lib/suppliers'
 import type {
   NeedOrigin,
+  NeedCalculationSource,
+  NeedDestination,
   NeedStatus,
+  NeedType,
   NeedUrgency,
   PurchaseGroup,
   PurchaseNeedFormValues,
   PurchaseNeedGlobal,
+  RequestingService,
 } from '../../lib/purchaseNeeds'
 
 type PurchaseNeedFilters = {
   search?: string
   status?: NeedStatus | 'all' | 'open'
   origin?: NeedOrigin | 'all'
+  type?: NeedType | 'all'
+  destination?: NeedDestination | 'all'
+  source?: NeedCalculationSource | 'all'
+  service?: RequestingService | 'all'
   urgency?: NeedUrgency | 'all'
   familyId?: string
   articleId?: string
@@ -49,6 +57,16 @@ function calculateTaxValues(values: PurchaseNeedFormValues) {
   }
 }
 
+function deriveLegacyOrigin(values: PurchaseNeedFormValues): NeedOrigin {
+  if (values.source_du_calcul === 'besoins_theoriques_evenement' || values.destination_prevue === 'evenement_banquet_seminaire') return 'evenement'
+  if (values.source_du_calcul === 'seuil_stock') return 'seuil_minimum'
+  if (values.destination_prevue === 'maintenance_travaux' || values.service_demandeur === 'maintenance') return 'maintenance'
+  if (values.destination_prevue === 'chambres_hebergement' || values.service_demandeur === 'hebergement') return 'chambres'
+  if (values.destination_prevue === 'administration_bureau' || values.service_demandeur === 'administration') return 'administration'
+  if (values.destination_prevue === 'cuisine_production' || values.source_du_calcul === 'fiche_technique') return 'production'
+  return values.origin
+}
+
 export async function listPurchaseNeedsGlobal(filters: PurchaseNeedFilters = {}) {
   const page = filters.page ?? 1
   const pageSize = filters.pageSize ?? 20
@@ -64,6 +82,10 @@ export async function listPurchaseNeedsGlobal(filters: PurchaseNeedFilters = {})
   if (filters.status === 'open' || !filters.status) query = query.in('status', ['a_faire', 'en_cours', 'valide'])
   else if (filters.status !== 'all') query = query.eq('status', filters.status)
   if (filters.origin && filters.origin !== 'all') query = query.eq('origin', filters.origin)
+  if (filters.type && filters.type !== 'all') query = query.eq('type_de_besoin', filters.type)
+  if (filters.destination && filters.destination !== 'all') query = query.eq('destination_prevue', filters.destination)
+  if (filters.source && filters.source !== 'all') query = query.eq('source_du_calcul', filters.source)
+  if (filters.service && filters.service !== 'all') query = query.eq('service_demandeur', filters.service)
   if (filters.urgency && filters.urgency !== 'all') query = query.eq('urgency', filters.urgency)
   if (filters.articleId) query = query.eq('article_id', filters.articleId)
   if (filters.supplierId) query = query.eq('supplier_id', filters.supplierId)
@@ -86,12 +108,17 @@ export async function listPurchaseNeedsGlobal(filters: PurchaseNeedFilters = {})
 export async function createPurchaseNeed(values: PurchaseNeedFormValues, profileId: string) {
   const tax = calculateTaxValues(values)
   const total = values.quantity * tax.estimatedPriceHt
+  const origin = deriveLegacyOrigin(values)
   const { error } = await supabase.schema('stock').from('purchase_needs').insert({
     article_id: values.article_id,
     quantity: values.quantity,
     quantity_needed: values.quantity,
     unit_id: values.unit_id,
-    origin: values.origin,
+    origin,
+    type_de_besoin: values.type_de_besoin ?? 'besoin_ponctuel',
+    destination_prevue: values.destination_prevue ?? 'stock_general',
+    source_du_calcul: values.source_du_calcul ?? 'saisie_manuelle',
+    service_demandeur: values.service_demandeur ?? 'cuisine',
     urgency: values.urgency,
     estimated_price: tax.estimatedPriceHt,
     price_input_amount: tax.inputAmount,
@@ -119,6 +146,7 @@ export async function updatePurchaseNeed(id: string, values: PurchaseNeedFormVal
 
   const tax = calculateTaxValues(values)
   const total = values.quantity * tax.estimatedPriceHt
+  const origin = deriveLegacyOrigin(values)
   const { error } = await supabase.schema('stock')
     .from('purchase_needs')
     .update({
@@ -126,7 +154,11 @@ export async function updatePurchaseNeed(id: string, values: PurchaseNeedFormVal
       quantity: values.quantity,
       quantity_needed: values.quantity,
       unit_id: values.unit_id,
-      origin: values.origin,
+      origin,
+      type_de_besoin: values.type_de_besoin ?? 'besoin_ponctuel',
+      destination_prevue: values.destination_prevue ?? 'stock_general',
+      source_du_calcul: values.source_du_calcul ?? 'saisie_manuelle',
+      service_demandeur: values.service_demandeur ?? 'cuisine',
       urgency: values.urgency,
       estimated_price: tax.estimatedPriceHt,
       price_input_amount: tax.inputAmount,

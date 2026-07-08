@@ -12,14 +12,18 @@ import {
   canGroupPurchaseNeeds,
   canValidatePurchaseNeeds,
   isNeedExpired,
-  needOriginLabels,
-  needOrigins,
+  needCalculationSourceLabels,
+  needCalculationSources,
+  needDestinationLabels,
+  needDestinations,
   needStatusLabels,
   needStatuses,
+  needTypeLabels,
+  needTypes,
   needUrgencyLabels,
   needUrgencies,
 } from '../../lib/purchaseNeeds'
-import type { NeedOrigin, NeedStatus, NeedUrgency, PurchaseNeedGlobal } from '../../lib/purchaseNeeds'
+import type { NeedCalculationSource, NeedDestination, NeedStatus, NeedType, NeedUrgency, PurchaseNeedGlobal } from '../../lib/purchaseNeeds'
 import type { Family } from '../../lib/catalog'
 import type { Supplier } from '../../lib/suppliers'
 
@@ -35,14 +39,16 @@ export function PurchaseNeedsList() {
   const [groupSupplierId, setGroupSupplierId] = useState('')
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<NeedStatus | 'all' | 'open'>('open')
-  const [origin, setOrigin] = useState<NeedOrigin | 'all'>('all')
+  const [type, setType] = useState<NeedType | 'all'>('all')
+  const [destination, setDestination] = useState<NeedDestination | 'all'>('all')
+  const [source, setSource] = useState<NeedCalculationSource | 'all'>('all')
   const [urgency, setUrgency] = useState<NeedUrgency | 'all'>('all')
   const [familyId, setFamilyId] = useState('')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const pageSize = 20
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
-  const filters = useMemo(() => ({ search, status, origin, urgency, familyId, page, pageSize }), [familyId, origin, page, search, status, urgency])
+  const filters = useMemo(() => ({ search, status, type, destination, source, urgency, familyId, page, pageSize }), [destination, familyId, page, search, source, status, type, urgency])
 
   const load = useCallback(async () => {
     const result = await listPurchaseNeedsGlobal(filters)
@@ -146,10 +152,12 @@ export function PurchaseNeedsList() {
         <Metric label="Budget" value={`${dashboard.budget.toLocaleString('fr-FR')} Ar`} tone="slate" />
       </section>
 
-      <section className="surface grid gap-3 p-4 xl:grid-cols-[1fr_150px_170px_150px_180px]">
+      <section className="surface grid gap-3 p-4 xl:grid-cols-[1fr_150px_190px_210px_190px_150px_180px]">
         <input value={search} onChange={(event) => resetPage(() => setSearch(event.target.value))} className="input" placeholder="Rechercher article ou commentaire" />
         <select value={status} onChange={(event) => resetPage(() => setStatus(event.target.value as NeedStatus | 'all' | 'open'))} className="input"><option value="open">A traiter</option><option value="all">Tous statuts</option>{needStatuses.map((item) => <option key={item} value={item}>{needStatusLabels[item]}</option>)}</select>
-        <select value={origin} onChange={(event) => resetPage(() => setOrigin(event.target.value as NeedOrigin | 'all'))} className="input"><option value="all">Toutes origines</option>{needOrigins.map((item) => <option key={item} value={item}>{needOriginLabels[item]}</option>)}</select>
+        <select value={type} onChange={(event) => resetPage(() => setType(event.target.value as NeedType | 'all'))} className="input"><option value="all">Tous types</option>{needTypes.map((item) => <option key={item} value={item}>{needTypeLabels[item]}</option>)}</select>
+        <select value={destination} onChange={(event) => resetPage(() => setDestination(event.target.value as NeedDestination | 'all'))} className="input"><option value="all">Toutes destinations</option>{needDestinations.map((item) => <option key={item} value={item}>{needDestinationLabels[item]}</option>)}</select>
+        <select value={source} onChange={(event) => resetPage(() => setSource(event.target.value as NeedCalculationSource | 'all'))} className="input"><option value="all">Toutes sources</option>{needCalculationSources.map((item) => <option key={item} value={item}>{needCalculationSourceLabels[item]}</option>)}</select>
         <select value={urgency} onChange={(event) => resetPage(() => setUrgency(event.target.value as NeedUrgency | 'all'))} className="input"><option value="all">Toutes urgences</option>{needUrgencies.map((item) => <option key={item} value={item}>{needUrgencyLabels[item]}</option>)}</select>
         <select value={familyId} onChange={(event) => resetPage(() => setFamilyId(event.target.value))} className="input"><option value="">Toutes familles</option>{families.map((family) => <option key={family.id} value={family.id}>{family.name}</option>)}</select>
       </section>
@@ -172,14 +180,14 @@ export function PurchaseNeedsList() {
       )}
 
       <section className="surface overflow-hidden">
-        <div className="hidden grid-cols-[44px_1.45fr_0.9fr_1fr_1fr_0.9fr_120px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
-          <span></span><span>Besoin</span><span>Quantite</span><span>Origine</span><span>Budget</span><span>Demandeur</span><span>Actions</span>
+        <div className="hidden grid-cols-[44px_1.35fr_0.85fr_1.25fr_1fr_0.9fr_120px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
+          <span></span><span>Besoin</span><span>Quantite</span><span>Besoin / destination</span><span>Budget</span><span>Demandeur</span><span>Actions</span>
         </div>
         <div className="divide-y divide-slate-200">
           {needs.map((need) => {
             const selectable = !['regroupe', 'refuse', 'annule'].includes(need.status)
             return (
-            <div key={need.id} className={`grid gap-4 px-5 py-4 xl:grid-cols-[44px_1.45fr_0.9fr_1fr_1fr_0.9fr_120px] xl:items-center ${isNeedExpired(need) ? 'bg-red-50/80' : 'hover:bg-slate-50'}`}>
+            <div key={need.id} className={`grid gap-4 px-5 py-4 xl:grid-cols-[44px_1.35fr_0.85fr_1.25fr_1fr_0.9fr_120px] xl:items-center ${isNeedExpired(need) ? 'bg-red-50/80' : 'hover:bg-slate-50'}`}>
               <input type="checkbox" checked={selectedIds.includes(need.id)} disabled={!selectable} title={selectable ? 'Selectionner' : 'Besoin deja traite'} onChange={() => toggleSelection(need.id)} className="mt-1 h-4 w-4 disabled:cursor-not-allowed disabled:opacity-40 xl:mt-0" />
 
               <div className="min-w-0">
@@ -206,7 +214,9 @@ export function PurchaseNeedsList() {
               </div>
 
               <div>
-                <p className="text-sm font-semibold text-slate-800">{needOriginLabels[need.origin]}</p>
+                <p className="text-sm font-semibold text-slate-800">{needTypeLabels[need.type_de_besoin ?? 'besoin_ponctuel']}</p>
+                <p className="mt-1 text-xs text-slate-500">{needDestinationLabels[need.destination_prevue ?? 'stock_general']}</p>
+                <p className="mt-1 text-xs text-slate-500">Source : {needCalculationSourceLabels[need.source_du_calcul ?? 'saisie_manuelle']}</p>
                 <p className="mt-1 text-xs text-slate-500">{need.events?.name || (need.requested_date ? `Souhaite le ${new Date(need.requested_date).toLocaleDateString('fr-FR')}` : 'Sans date souhaitee')}</p>
               </div>
 

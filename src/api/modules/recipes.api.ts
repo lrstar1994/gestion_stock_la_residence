@@ -504,6 +504,7 @@ async function prepareRecipeIngredients(values: RecipeFormValues) {
       quantity: ingredient.quantity,
       displayUnit,
       stockUnit,
+      manualConversionFactor: ingredient.conversion_factor,
     })
 
     return {
