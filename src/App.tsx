@@ -132,14 +132,24 @@ function App() {
           <Route path="/recipes/pending-ingredients" element={<PendingIngredientsPage />} />
           <Route path="/events/new" element={<EventFormPage />} />
           <Route path="/events/:id/edit" element={<EventFormPage />} />
-          <Route path="/purchase-needs/new" element={<PurchaseNeedFormPage />} />
-          <Route path="/cash-purchases/new" element={<CashPurchaseFormPage />} />
         </Route>
       </Route>
 
       <Route element={<ProtectedRoute allowedRoles={['direction', 'chef_cuisine', 'fiche_technique', 'magasinier', 'acheteur', 'maintenance']} />}>
         <Route element={<AppLayout />}>
           <Route path="/purchases/new" element={<PurchaseWizardPage />} />
+        </Route>
+      </Route>
+
+      <Route element={<ProtectedRoute allowedRoles={['direction', 'chef_cuisine', 'fiche_technique', 'maintenance', 'magasinier']} />}>
+        <Route element={<AppLayout />}>
+          <Route path="/purchase-needs/new" element={<PurchaseNeedFormPage />} />
+        </Route>
+      </Route>
+
+      <Route element={<ProtectedRoute allowedRoles={['direction', 'acheteur']} />}>
+        <Route element={<AppLayout />}>
+          <Route path="/cash-purchases/new" element={<CashPurchaseFormPage />} />
         </Route>
       </Route>
 

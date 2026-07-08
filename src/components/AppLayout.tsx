@@ -13,7 +13,7 @@ const navItems = [
   { to: '/articles', label: 'Articles' },
   { to: '/recipes', label: 'Fiches techniques' },
   { to: '/events', label: 'Evenements' },
-  { to: '/purchases/new', label: 'Assistant achat' },
+  { to: '/purchases/new', label: 'Nouvel achat' },
   { to: '/purchase-needs', label: "Besoins d'achat" },
   { to: '/cash-purchases', label: 'Achats especes' },
   { to: '/purchase-orders', label: 'Commandes' },
