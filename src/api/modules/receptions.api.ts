@@ -248,6 +248,7 @@ async function replaceReceptionItems(receptionId: string, items: ReceptionFormVa
       vatRecoverable: item.vat_recoverable,
       declaredExtraTaxRate: item.declared_extra_tax_rate,
       declaredExtraTaxAmount: item.declared_extra_tax_amount,
+      manualCostTotal: item.manual_cost_total,
     })
     const { data, error } = await supabase.schema('stock')
       .from('reception_items')

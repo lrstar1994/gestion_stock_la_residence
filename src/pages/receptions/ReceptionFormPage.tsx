@@ -13,6 +13,8 @@ import type { AnomalyType, ReceptionFormValues } from '../../lib/receptions'
 import type { Supplier } from '../../lib/suppliers'
 import type { CashPurchase } from '../../lib/cashPurchases'
 import { getUnitConversionFactor } from '../../lib/unitConversions'
+import { calculateMaterialCost, invoiceTaxModeLabels, invoiceTaxModes, supplierTaxStatusLabels, supplierTaxStatuses } from '../../lib/materialCosts'
+import type { InvoiceTaxMode, SupplierTaxStatus } from '../../lib/materialCosts'
 
 const today = new Date().toISOString().slice(0, 10)
 
@@ -30,6 +32,28 @@ const emptyForm: ReceptionFormValues = {
 }
 
 type ReceptionMode = 'order' | 'cash' | 'manual'
+
+type ReceptionFiscalSettings = {
+  supplier_tax_status: SupplierTaxStatus
+  invoice_tax_mode: InvoiceTaxMode
+  vat_rate: number
+  vat_recoverable: boolean
+  declared_extra_tax_rate: number
+  declared_extra_tax_amount: number
+  manual_cost_total: number
+  effective_cost_note: string
+}
+
+const defaultFiscalSettings: ReceptionFiscalSettings = {
+  supplier_tax_status: 'unknown',
+  invoice_tax_mode: 'invoice_with_recoverable_vat',
+  vat_rate: 20,
+  vat_recoverable: true,
+  declared_extra_tax_rate: 0,
+  declared_extra_tax_amount: 0,
+  manual_cost_total: 0,
+  effective_cost_note: '',
+}
 
 function normalizeName(value?: string | null) {
   return value?.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() ?? ''
@@ -49,7 +73,20 @@ export function ReceptionFormPage() {
   const [units, setUnits] = useState<Unit[]>([])
   const [orders, setOrders] = useState<PurchaseOrder[]>([])
   const [cashPurchases, setCashPurchases] = useState<CashPurchase[]>([])
+  const [fiscalSettings, setFiscalSettings] = useState<ReceptionFiscalSettings>(defaultFiscalSettings)
   const total = useMemo(() => calculateReceptionTotal(values.items), [values.items])
+  const fiscalPreview = useMemo(() => calculateMaterialCost({
+    amountHt: total,
+    vatAmount: total * Number(fiscalSettings.vat_rate ?? 0) / 100,
+    amountTtc: total + total * Number(fiscalSettings.vat_rate ?? 0) / 100,
+    quantityStock: 1,
+    invoiceTaxMode: fiscalSettings.invoice_tax_mode,
+    vatRate: fiscalSettings.vat_rate,
+    vatRecoverable: fiscalSettings.vat_recoverable,
+    declaredExtraTaxRate: fiscalSettings.declared_extra_tax_rate,
+    declaredExtraTaxAmount: fiscalSettings.declared_extra_tax_amount,
+    manualCostTotal: fiscalSettings.manual_cost_total,
+  }), [fiscalSettings, total])
 
   const selectOrder = useCallback((order: PurchaseOrder, fallbackLocationId = '') => {
     setValues((current) => ({
@@ -145,6 +182,7 @@ export function ReceptionFormPage() {
 
     if (id) {
       const reception = await getReception(id)
+      const firstItem = reception.reception_items?.[0]
       setValues({
         supplier_id: reception.supplier_id,
         reception_date: reception.reception_date,
@@ -178,6 +216,20 @@ export function ReceptionFormPage() {
           })) ?? [],
         })) ?? [],
       })
+      if (firstItem) {
+        setFiscalSettings({
+          supplier_tax_status: firstItem.supplier_tax_status ?? 'unknown',
+          invoice_tax_mode: firstItem.invoice_tax_mode ?? 'invoice_with_recoverable_vat',
+          vat_rate: Number(firstItem.vat_rate ?? 20),
+          vat_recoverable: firstItem.vat_recoverable ?? true,
+          declared_extra_tax_rate: Number(firstItem.declared_extra_tax_rate ?? 0),
+          declared_extra_tax_amount: Number(firstItem.declared_extra_tax_amount ?? 0),
+          manual_cost_total: firstItem.invoice_tax_mode === 'manual_validated'
+            ? (reception.reception_items ?? []).reduce((sum, item) => sum + Number(item.effective_material_cost_total ?? 0), 0)
+            : 0,
+          effective_cost_note: firstItem.effective_cost_note ?? '',
+        })
+      }
     } else {
       setValues((current) => ({ ...current, location_id: defaultLocation?.id ?? loadedLocations[0]?.id ?? '' }))
       const orderId = searchParams.get('orderId')
@@ -280,15 +332,42 @@ export function ReceptionFormPage() {
 
   const removeItem = (index: number) => setValues((current) => ({ ...current, items: current.items.filter((_, itemIndex) => itemIndex !== index) }))
 
+  const applyFiscalSettingsToValues = (source: ReceptionFormValues): ReceptionFormValues => {
+    const baseTotal = calculateReceptionTotal(source.items)
+    return {
+      ...source,
+      items: source.items.map((item) => {
+        const lineAmount = Number(item.quantity_accepted ?? 0) * Number(item.unit_price_real ?? 0)
+        const share = baseTotal > 0 ? lineAmount / baseTotal : 0
+        return {
+          ...item,
+          supplier_tax_status: fiscalSettings.supplier_tax_status,
+          invoice_tax_mode: fiscalSettings.invoice_tax_mode,
+          vat_rate: fiscalSettings.vat_rate,
+          vat_recoverable: fiscalSettings.vat_recoverable,
+          declared_extra_tax_rate: fiscalSettings.declared_extra_tax_rate,
+          declared_extra_tax_amount: Number(fiscalSettings.declared_extra_tax_amount ?? 0) > 0 ? Number(fiscalSettings.declared_extra_tax_amount) * share : 0,
+          manual_cost_total: fiscalSettings.invoice_tax_mode === 'manual_validated' ? Number(fiscalSettings.manual_cost_total ?? 0) * share : undefined,
+          effective_cost_note: fiscalSettings.effective_cost_note,
+        }
+      }),
+    }
+  }
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     try {
+      if (fiscalSettings.invoice_tax_mode === 'manual_validated') {
+        if (Number(fiscalSettings.manual_cost_total ?? 0) <= 0) throw new Error('Veuillez saisir un cout manuel total')
+        if (!fiscalSettings.effective_cost_note.trim()) throw new Error('Veuillez saisir une note pour le cout manuel')
+      }
+      const payload = applyFiscalSettingsToValues(values)
       if (id) {
-        await updateReception(id, values, profile?.id)
+        await updateReception(id, payload, profile?.id)
         toast.success('Reception mise a jour avec succes')
         navigate(`/receptions/${id}`)
       } else {
-        const receptionId = await createReception(values, profile?.id)
+        const receptionId = await createReception(payload, profile?.id)
         toast.success('Réception créée avec succès')
         navigate(`/receptions/${receptionId}`)
       }
@@ -366,6 +445,59 @@ export function ReceptionFormPage() {
             <span className="mt-1 block text-sm text-amber-800">A utiliser uniquement pour integrer d'anciennes factures deja traitees avant l'utilisation du logiciel. Cette reception pourra etre facturee, mais ne modifiera pas le stock.</span>
           </span>
         </label>
+      </section>
+
+      <section className="surface grid gap-4 p-5 md:grid-cols-2">
+        <div className="md:col-span-2">
+          <p className="eyebrow">Lecture fiscale / cout matiere</p>
+          <h2 className="mt-2 text-lg font-bold text-slate-950">Cout matiere interne de la reception</h2>
+          <p className="mt-1 text-sm text-slate-600">Ces reglages sont appliques aux lignes recues au moment de l'enregistrement.</p>
+        </div>
+        <label className="block">
+          <span className="field-label">Statut fiscal fournisseur</span>
+          <select value={fiscalSettings.supplier_tax_status} onChange={(event) => setFiscalSettings((current) => ({ ...current, supplier_tax_status: event.target.value as SupplierTaxStatus }))} className="input mt-2">
+            {supplierTaxStatuses.map((status) => <option key={status} value={status}>{supplierTaxStatusLabels[status]}</option>)}
+          </select>
+        </label>
+        <label className="block">
+          <span className="field-label">Mode fiscal</span>
+          <select value={fiscalSettings.invoice_tax_mode} onChange={(event) => setFiscalSettings((current) => ({ ...current, invoice_tax_mode: event.target.value as InvoiceTaxMode }))} className="input mt-2">
+            {invoiceTaxModes.map((mode) => <option key={mode} value={mode}>{invoiceTaxModeLabels[mode]}</option>)}
+          </select>
+        </label>
+        <label className="block">
+          <span className="field-label">Taux TVA</span>
+          <input type="number" value={fiscalSettings.vat_rate} onChange={(event) => setFiscalSettings((current) => ({ ...current, vat_rate: Number(event.target.value) }))} className="input mt-2" />
+        </label>
+        <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <input type="checkbox" checked={fiscalSettings.vat_recoverable} onChange={(event) => setFiscalSettings((current) => ({ ...current, vat_recoverable: event.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[#1E3A8A] focus:ring-[#1E3A8A]" />
+          TVA recuperable
+        </label>
+        <label className="block">
+          <span className="field-label">Charge declarative %</span>
+          <input type="number" value={fiscalSettings.declared_extra_tax_rate} onChange={(event) => setFiscalSettings((current) => ({ ...current, declared_extra_tax_rate: Number(event.target.value) }))} className="input mt-2" />
+        </label>
+        <label className="block">
+          <span className="field-label">Charge declarative montant</span>
+          <input type="number" value={fiscalSettings.declared_extra_tax_amount} onChange={(event) => setFiscalSettings((current) => ({ ...current, declared_extra_tax_amount: Number(event.target.value) }))} className="input mt-2" />
+        </label>
+        {fiscalSettings.invoice_tax_mode === 'manual_validated' && (
+          <label className="block md:col-span-2">
+            <span className="field-label">Cout manuel total retenu</span>
+            <input type="number" value={fiscalSettings.manual_cost_total} onChange={(event) => setFiscalSettings((current) => ({ ...current, manual_cost_total: Number(event.target.value) }))} className="input mt-2" />
+          </label>
+        )}
+        <label className="block md:col-span-2">
+          <span className="field-label">Note cout interne</span>
+          <input value={fiscalSettings.effective_cost_note} onChange={(event) => setFiscalSettings((current) => ({ ...current, effective_cost_note: event.target.value }))} className="input mt-2" placeholder="Motif ou precision si cout exceptionnel" />
+        </label>
+        <div className="rounded-md border border-[#D4AF37]/30 bg-amber-50 p-4 text-sm text-slate-800 md:col-span-2">
+          <p>Base reception : <strong>{total.toLocaleString('fr-FR')} Ar</strong></p>
+          <p>TVA recuperable estimee : <strong>{fiscalPreview.recoverable_vat_amount.toLocaleString('fr-FR')} Ar</strong></p>
+          <p>TVA non recuperable estimee : <strong>{fiscalPreview.non_recoverable_vat_amount.toLocaleString('fr-FR')} Ar</strong></p>
+          <p>Charge declarative estimee : <strong>{fiscalPreview.declared_extra_tax_amount.toLocaleString('fr-FR')} Ar</strong></p>
+          <p>Cout matiere interne estime : <strong>{Number(fiscalPreview.effective_material_cost_total ?? 0).toLocaleString('fr-FR')} Ar</strong></p>
+        </div>
       </section>
 
       <section className="surface overflow-hidden">

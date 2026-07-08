@@ -169,6 +169,7 @@ export const receptionItemSchema = z.object({
   vat_recoverable: z.boolean().optional(),
   declared_extra_tax_rate: z.number().min(0).optional(),
   declared_extra_tax_amount: z.number().min(0).optional(),
+  manual_cost_total: z.number().min(0).optional(),
   effective_cost_note: z.string().optional(),
   quality: z.enum(qualityStatuses),
   quality_comment: z.string().optional(),
