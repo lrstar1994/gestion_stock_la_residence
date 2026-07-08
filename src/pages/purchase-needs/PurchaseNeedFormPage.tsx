@@ -57,6 +57,8 @@ export function PurchaseNeedFormPage() {
   const estimatedPriceHt = priceIsHt ? priceInputAmount : priceInputAmount / (1 + vatRate / 100)
   const estimatedPriceTtc = priceIsHt ? priceInputAmount * (1 + vatRate / 100) : priceInputAmount
   const estimatedVatAmount = Math.max(0, estimatedPriceTtc - estimatedPriceHt)
+  const estimatedTotalHt = Number(values.quantity ?? 0) * estimatedPriceHt
+  const estimatedTotalTtc = Number(values.quantity ?? 0) * estimatedPriceTtc
 
   useEffect(() => {
     Promise.all([listArticles({ status: 'active', pageSize: 1000 }), listSuppliers(), listUnits()])
@@ -123,8 +125,11 @@ export function PurchaseNeedFormPage() {
         <Field label="Service demandeur"><select value={values.service_demandeur} onChange={(event) => update('service_demandeur', event.target.value as RequestingService)} className="input mt-2">{requestingServices.map((service) => <option key={service} value={service}>{requestingServiceLabels[service]}</option>)}</select></Field>
         <Field label="Urgence"><select value={values.urgency} onChange={(event) => update('urgency', event.target.value as NeedUrgency)} className="input mt-2">{needUrgencies.map((urgency) => <option key={urgency} value={urgency}>{needUrgencyLabels[urgency]}</option>)}</select></Field>
         <Field label="Date souhaitee"><input value={values.requested_date} onChange={(event) => update('requested_date', event.target.value)} type="date" className="input mt-2" /></Field>
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <Field label="Prix estimatif saisi">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 lg:col-span-2">
+          <div className="mb-4 rounded-md border border-blue-100 bg-blue-50 p-3 text-sm text-[#1E3A8A]">
+            Ce prix sert uniquement a estimer et valider le besoin. Le cout matiere reel sera confirme a la reception ou a la facture.
+          </div>
+          <Field label="Prix estimatif unitaire">
             <input value={values.price_input_amount ?? 0} onChange={(event) => update('price_input_amount', Number(event.target.value))} type="number" min="0" step="0.01" className="input mt-2" />
           </Field>
           <label className="mt-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
@@ -134,16 +139,20 @@ export function PurchaseNeedFormPage() {
               type="checkbox"
               className="h-4 w-4 rounded border-slate-300 text-[#1E3A8A] focus:ring-[#1E3A8A]"
             />
-            Prix saisi hors taxe
+            Ce prix est hors taxe
           </label>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <Field label="TVA utilisee">
+            <Field label="Taux TVA estime">
               <input value={values.vat_rate ?? 20} onChange={(event) => update('vat_rate', Number(event.target.value))} type="number" min="0" step="0.01" className="input mt-2" />
             </Field>
-            <div className="rounded-md border border-[#D4AF37]/30 bg-white p-3 text-sm text-slate-700">
-              <p>Prix retenu HT : <strong>{estimatedPriceHt.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} Ar</strong></p>
-              <p>TVA estimee : <strong>{estimatedVatAmount.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} Ar</strong></p>
-              <p>Prix TTC : <strong>{estimatedPriceTtc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} Ar</strong></p>
+            <div className="rounded-md border border-[#D4AF37]/30 bg-white p-3 text-sm text-slate-700 sm:row-span-2">
+              <p>Prix unitaire HT estime : <strong>{estimatedPriceHt.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} Ar</strong></p>
+              <p>TVA unitaire estimee : <strong>{estimatedVatAmount.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} Ar</strong></p>
+              <p>Prix unitaire TTC estime : <strong>{estimatedPriceTtc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} Ar</strong></p>
+              <div className="mt-3 border-t border-slate-200 pt-3">
+                <p>Cout total HT estime : <strong>{estimatedTotalHt.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} Ar</strong></p>
+                <p>Cout total TTC estime : <strong>{estimatedTotalTtc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} Ar</strong></p>
+              </div>
             </div>
           </div>
         </div>
