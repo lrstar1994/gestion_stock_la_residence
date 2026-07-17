@@ -56,6 +56,7 @@ const navigationGroups: NavigationGroup[] = [
     items: [
       { to: '/articles', label: 'Articles' },
       { to: '/admin/families', label: 'Categories', directionOnly: true },
+      { to: '/admin/sub-categories', label: 'Sous-categories', directionOnly: true },
       { to: '/admin/units', label: 'Unites', directionOnly: true },
       { to: '/admin/locations', label: 'Localisations', directionOnly: true },
     ],
@@ -93,7 +94,6 @@ const navigationGroups: NavigationGroup[] = [
     items: [
       { to: '/admin/users', label: 'Utilisateurs', directionOnly: true },
       { to: '/audit/inter-modules', label: 'Audit', directionOnly: true },
-      { to: '/admin/sub-categories', label: 'Sous-categories', directionOnly: true },
     ],
   },
 ]
