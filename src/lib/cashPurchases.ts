@@ -5,10 +5,16 @@ import type { Profile, UserRole } from './validation'
 export const cashPurchaseStatuses = ['en_attente', 'valide', 'especes_remises', 'retour_partiel', 'retour_complet', 'cloture', 'refuse'] as const
 export const cashPurchaseSources = ['caisse_principale', 'caisse_privilege', 'caisse_piscine'] as const
 export const differenceTypes = ['change_not_returned', 'price_difference', 'quantity_missing', 'product_not_conforming', 'invoice_error', 'advance_overrun'] as const
+export const cashWorkflowStatuses = ['especes_demandees', 'decaissement_valide', 'especes_remises', 'retour_achat_saisi', 'justificatif_recu', 'monnaie_rendue', 'rendu_monnaie_a_suivre', 'ecart_a_valider', 'ecart_valide_direction', 'cloture_caisse', 'annule'] as const
+export const cashReceptionStatuses = ['en_attente_reception', 'reception_partielle', 'reception_conforme', 'reception_avec_anomalie', 'reception_refusee'] as const
+export const cashStockEntryStatuses = ['non_entre_stock', 'entree_stock_partielle', 'entree_stock_faite', 'bloque_stock'] as const
 
 export type CashPurchaseStatus = (typeof cashPurchaseStatuses)[number]
 export type CashPurchaseSource = (typeof cashPurchaseSources)[number]
 export type DifferenceType = (typeof differenceTypes)[number]
+export type CashWorkflowStatus = (typeof cashWorkflowStatuses)[number]
+export type CashReceptionStatus = (typeof cashReceptionStatuses)[number]
+export type CashStockEntryStatus = (typeof cashStockEntryStatuses)[number]
 
 export const cashPurchaseStatusLabels: Record<CashPurchaseStatus, string> = {
   en_attente: 'En attente',
@@ -33,6 +39,35 @@ export const differenceTypeLabels: Record<DifferenceType, string> = {
   product_not_conforming: 'Produit non conforme',
   invoice_error: 'Erreur de facture',
   advance_overrun: "Depassement d'avance",
+}
+
+export const cashWorkflowStatusLabels: Record<CashWorkflowStatus, string> = {
+  especes_demandees: 'Especes demandees',
+  decaissement_valide: 'Decaissement valide',
+  especes_remises: 'Especes remises',
+  retour_achat_saisi: "Retour d'achat saisi",
+  justificatif_recu: 'Justificatif recu',
+  monnaie_rendue: 'Monnaie rendue',
+  rendu_monnaie_a_suivre: 'Rendu de monnaie a suivre',
+  ecart_a_valider: 'Ecart a valider',
+  ecart_valide_direction: 'Ecart valide Direction',
+  cloture_caisse: 'Cloture caisse',
+  annule: 'Annule',
+}
+
+export const cashReceptionStatusLabels: Record<CashReceptionStatus, string> = {
+  en_attente_reception: 'En attente reception',
+  reception_partielle: 'Reception partielle',
+  reception_conforme: 'Reception conforme',
+  reception_avec_anomalie: 'Reception avec anomalie',
+  reception_refusee: 'Reception refusee',
+}
+
+export const cashStockEntryStatusLabels: Record<CashStockEntryStatus, string> = {
+  non_entre_stock: 'Non entre en stock',
+  entree_stock_partielle: 'Entree stock partielle',
+  entree_stock_faite: 'Entree stock faite',
+  bloque_stock: 'Bloque stock',
 }
 
 export type CashPurchase = {
@@ -60,6 +95,9 @@ export type CashPurchase = {
   closed_at: string | null
   closing_comment: string | null
   status: CashPurchaseStatus
+  cash_status?: CashWorkflowStatus | null
+  reception_status?: CashReceptionStatus | null
+  stock_entry_status?: CashStockEntryStatus | null
   created_at: string
   updated_at: string
   created_by: string | null
@@ -81,8 +119,14 @@ export type CashPurchaseItem = {
   quantity_planned: number
   quantity_bought: number
   unit_id: string
+  stock_unit_id?: string | null
+  conversion_factor?: number | null
+  quantity_planned_stock?: number | null
+  quantity_bought_stock?: number | null
   unit_price_estimated: number
   unit_price_real: number
+  unit_price_estimated_stock?: number | null
+  unit_price_real_stock?: number | null
   total_estimated: number
   total_real: number
   invoice_number?: string | null
@@ -91,6 +135,7 @@ export type CashPurchaseItem = {
   comment?: string | null
   articles?: Pick<Article, 'id' | 'name' | 'unit_id'> & { units?: Pick<Unit, 'id' | 'name' | 'abbreviation'> }
   units?: Pick<Unit, 'id' | 'name' | 'abbreviation'>
+  stock_unit?: Pick<Unit, 'id' | 'name' | 'abbreviation'>
 }
 
 export type CashPurchaseReceipt = {
@@ -125,7 +170,11 @@ export const cashPurchaseItemSchema = z.object({
   purchase_need_id: z.string().optional(),
   quantity_planned: z.number().positive('La quantite doit etre superieure a 0'),
   unit_id: z.string().min(1, "L'unite est obligatoire"),
+  stock_unit_id: z.string().optional(),
+  conversion_factor: z.number().positive('Le facteur de conversion doit etre superieur a 0').optional(),
+  quantity_planned_stock: z.number().min(0).optional(),
   unit_price_estimated: z.number().min(0),
+  unit_price_estimated_stock: z.number().min(0).optional(),
 })
 
 export const cashPurchaseSchema = z.object({

@@ -34,9 +34,12 @@ import { EventStatsPage } from './pages/events/EventStatsPage'
 import { PurchaseNeedsList } from './pages/purchase-needs/PurchaseNeedsList'
 import { PurchaseNeedFormPage } from './pages/purchase-needs/PurchaseNeedFormPage'
 import { PurchaseWizardPage } from './pages/purchases/PurchaseWizardPage'
+import { PurchaseTrackingPage } from './pages/purchases/PurchaseTrackingPage'
+import { MyValidationsPage } from './pages/validations/MyValidationsPage'
 import { CashPurchasesList } from './pages/cash-purchases/CashPurchasesList'
 import { CashPurchaseFormPage } from './pages/cash-purchases/CashPurchaseFormPage'
 import { CashPurchaseDetail } from './pages/cash-purchases/CashPurchaseDetail'
+import { CashDisbursementReportPage } from './pages/cash-purchases/CashDisbursementReportPage'
 import { PurchaseOrdersList } from './pages/purchase-orders/PurchaseOrdersList'
 import { PurchaseOrderFormPage } from './pages/purchase-orders/PurchaseOrderFormPage'
 import { PurchaseOrderDetail } from './pages/purchase-orders/PurchaseOrderDetail'
@@ -93,7 +96,9 @@ function App() {
           <Route path="/events/:id/production" element={<EventProductionPage />} />
           <Route path="/events/:id/analysis" element={<EventAnalysisPage />} />
           <Route path="/purchase-needs" element={<PurchaseNeedsList />} />
+          <Route path="/purchases/tracking" element={<PurchaseTrackingPage />} />
           <Route path="/cash-purchases" element={<CashPurchasesList />} />
+          <Route path="/cash-purchases/report" element={<CashDisbursementReportPage />} />
           <Route path="/cash-purchases/:id" element={<CashPurchaseDetail />} />
           <Route path="/purchase-orders" element={<PurchaseOrdersList />} />
           <Route path="/purchase-orders/:id" element={<PurchaseOrderDetail />} />
@@ -107,6 +112,7 @@ function App() {
           <Route path="/stock/stock-out/:id" element={<StockOutDetail />} />
           <Route path="/stock/consumption-analysis" element={<ConsumptionAnalysisPage />} />
           <Route path="/invoices" element={<InvoicesList />} />
+          <Route path="/invoices/payables" element={<InvoicesList />} />
           <Route path="/invoices/:id" element={<InvoiceDetail />} />
           <Route path="/sales" element={<SalesList />} />
           <Route path="/sales/stats" element={<SalesStatsPage />} />
@@ -114,6 +120,7 @@ function App() {
           <Route path="/inventories" element={<InventoriesList />} />
           <Route path="/inventories/initial" element={<InitialInventoryPage />} />
           <Route path="/inventories/:id" element={<InventoryDetail />} />
+          <Route path="/validations/my" element={<MyValidationsPage />} />
         </Route>
       </Route>
 

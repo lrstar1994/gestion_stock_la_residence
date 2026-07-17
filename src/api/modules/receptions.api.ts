@@ -83,7 +83,7 @@ async function attachReceptionDisplayUnits(reception: Reception) {
 export async function listReceivableOrders() {
   const { data, error } = await supabase.schema('stock')
     .from('purchase_orders')
-    .select('*, suppliers(*), purchase_order_items(*, articles(id, name, unit_id, families(id, name)), units(id, name, abbreviation))')
+    .select('*, suppliers(*), purchase_order_items(*, articles(id, name, unit_id, families(id, name), units(id, name, abbreviation)), units(id, name, abbreviation), stock_unit:units!purchase_order_items_stock_unit_id_fkey(id, name, abbreviation))')
     .in('status', ['envoyee', 'partiellement_livree', 'reception_avec_ecart'])
     .order('delivery_date', { ascending: true })
   if (error) throw error
@@ -93,8 +93,8 @@ export async function listReceivableOrders() {
 export async function listReceivableCashPurchases() {
   const { data, error } = await supabase.schema('stock')
     .from('cash_purchases')
-    .select('*, cash_purchase_items(*, articles(id, name, unit_id, units(id, name, abbreviation)), units(id, name, abbreviation))')
-    .eq('status', 'cloture')
+    .select('*, cash_purchase_items(*, articles(id, name, unit_id, units(id, name, abbreviation)), units(id, name, abbreviation), stock_unit:units!cash_purchase_items_stock_unit_id_fkey(id, name, abbreviation))')
+    .in('status', ['retour_partiel', 'retour_complet', 'cloture'])
     .order('request_date', { ascending: false })
   if (error) throw error
   return data ?? []
@@ -129,6 +129,9 @@ export async function createReception(values: ReceptionFormValues, profileId?: s
 
   await replaceReceptionItems(data.id, values.items)
   await addReceptionHistory(data.id, 'creation', 'Reception creee', profileId)
+  if (values.cash_purchase_id) {
+    await updateCashPurchaseWorkflowStatus(values.cash_purchase_id, { reception_status: 'en_attente_reception' }, profileId)
+  }
   return data.id as string
 }
 
@@ -340,6 +343,11 @@ export async function submitReception(id: string, profileId?: string) {
   const status: ReceptionStatus = hasAnomaly ? 'en_attente' : 'validee'
   const { error } = await supabase.schema('stock').from('receptions').update({ status, updated_by: profileId }).eq('id', id)
   if (error) throw error
+  if (reception.cash_purchase_id) {
+    await updateCashPurchaseWorkflowStatus(reception.cash_purchase_id, {
+      reception_status: hasAnomaly ? 'reception_avec_anomalie' : 'reception_conforme',
+    }, profileId)
+  }
   await addReceptionHistory(id, status === 'validee' ? 'validation' : 'soumission', status === 'validee' ? 'Reception validee automatiquement' : 'Reception soumise a validation', profileId)
   if (status === 'validee') {
     if (reception.is_historical) {
@@ -361,6 +369,11 @@ export async function validateReception(id: string, profileId?: string, comment?
     .update({ status, validated_by: profileId, validated_at: new Date().toISOString(), validation_comment: cleanNullable(comment), updated_by: profileId })
     .eq('id', id)
   if (error) throw error
+  if (reception.cash_purchase_id) {
+    await updateCashPurchaseWorkflowStatus(reception.cash_purchase_id, {
+      reception_status: hasAnomaly ? 'reception_avec_anomalie' : 'reception_conforme',
+    }, profileId)
+  }
   if (reception.is_historical) {
     await addReceptionHistory(id, 'validation', status === 'validee_avec_anomalies' ? 'Reception historique validee avec anomalies sans entree en stock' : 'Reception historique validee sans entree en stock', profileId)
     return
@@ -372,11 +385,18 @@ export async function validateReception(id: string, profileId?: string, comment?
 }
 
 export async function refuseReception(id: string, profileId?: string, reason?: string) {
+  const reception = await getReception(id)
   const { error } = await supabase.schema('stock')
     .from('receptions')
     .update({ status: 'refusee', validated_by: profileId, validated_at: new Date().toISOString(), validation_comment: cleanNullable(reason), updated_by: profileId })
     .eq('id', id)
   if (error) throw error
+  if (reception.cash_purchase_id) {
+    await updateCashPurchaseWorkflowStatus(reception.cash_purchase_id, {
+      reception_status: 'reception_refusee',
+      stock_entry_status: 'bloque_stock',
+    }, profileId)
+  }
   await addReceptionHistory(id, 'refus', reason ?? 'Reception refusee', profileId)
 }
 
@@ -400,6 +420,12 @@ async function applyReceptionSideEffects(id: string, profileId?: string) {
   if (movementRows.length > 0) {
     const { error } = await supabase.schema('stock').from('stock_pending_movements').insert(movementRows)
     if (error) throw error
+  }
+
+  if (reception.cash_purchase_id) {
+    await updateCashPurchaseWorkflowStatus(reception.cash_purchase_id, {
+      stock_entry_status: movementRows.length > 0 ? 'entree_stock_partielle' : 'non_entre_stock',
+    }, profileId)
   }
 
   if (reception.purchase_order_id) {
@@ -499,6 +525,21 @@ async function addReceptionHistory(receptionId: string, action: string, descript
     action,
     description,
     created_by: profileId,
+  })
+  if (error) throw error
+}
+
+async function updateCashPurchaseWorkflowStatus(
+  cashPurchaseId: string,
+  patch: { cash_status?: string; reception_status?: string; stock_entry_status?: string },
+  profileId?: string,
+) {
+  const { error } = await supabase.schema('stock').rpc('update_cash_purchase_workflow_status', {
+    p_cash_purchase_id: cashPurchaseId,
+    p_cash_status: patch.cash_status ?? null,
+    p_reception_status: patch.reception_status ?? null,
+    p_stock_entry_status: patch.stock_entry_status ?? null,
+    p_profile_id: profileId ?? null,
   })
   if (error) throw error
 }

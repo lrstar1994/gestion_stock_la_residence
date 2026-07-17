@@ -85,8 +85,10 @@ export type StockRow = {
   total_quantity: number
   last_price: number | null
   average_price: number | null
+  last_entry_date?: string | null
+  stock_value?: number | null
   articles?: Pick<Article, 'id' | 'name' | 'min_stock'> & { families?: Pick<Family, 'id' | 'name'>; units?: Pick<Unit, 'id' | 'name' | 'abbreviation'> }
-  locations?: Array<{ location_id: string; location_name: string; quantity: number }>
+  locations?: Array<{ location_id: string; location_name: string; quantity: number; stock_value?: number | null }>
 }
 
 export type StockArticleDetail = {
@@ -107,6 +109,8 @@ export type PriceHistoryRow = {
   reference_type: string | null
   reference_id: string | null
   movement_reference: string
+  total_cost?: number | null
+  comment?: string | null
   created_at: string
 }
 

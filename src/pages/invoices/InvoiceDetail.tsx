@@ -2,12 +2,12 @@ import { CheckCircle, Download, Edit, XCircle } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { addInvoicePayment, closeInvoice, contestInvoice, getInvoice, validateInvoiceRecord } from '../../api/modules/invoices.api'
+import { closeInvoice, contestInvoice, executeInvoicePayment, getInvoice, prepareInvoicePayment, refuseInvoicePayment, validateInvoicePayment, validateInvoiceRecord } from '../../api/modules/invoices.api'
 import { useAuth } from '../../hooks/useAuth'
 import { exportInvoiceToPdf } from '../../lib/invoiceExports'
-import { canManageInvoices, canPayInvoices, invoiceStatusLabels, paymentModeLabels, paymentModes } from '../../lib/invoices'
+import { canExecuteInvoicePayments, canManageInvoices, canPrepareInvoicePayments, canValidateInvoicePayments, invoicePaymentStatusLabels, invoiceStatusLabels, paymentModeLabels, paymentModes } from '../../lib/invoices'
 import { effectiveCostMethodLabels, invoiceTaxModeLabels } from '../../lib/materialCosts'
-import type { Invoice, InvoicePaymentFormValues } from '../../lib/invoices'
+import type { Invoice, InvoicePayment, InvoicePaymentFormValues } from '../../lib/invoices'
 
 const today = new Date().toISOString().slice(0, 10)
 
@@ -17,8 +17,11 @@ export function InvoiceDetail() {
   const { profile } = useAuth()
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [payment, setPayment] = useState<InvoicePaymentFormValues>({ amount: 0, payment_mode: 'virement', payment_date: today, payment_reference: '', comment: '' })
+  const [executionPaymentId, setExecutionPaymentId] = useState<string | null>(null)
   const canManage = canManageInvoices(profile?.role)
-  const canPay = canPayInvoices(profile?.role)
+  const canPreparePayment = canPrepareInvoicePayments(profile?.role)
+  const canValidatePayment = canValidateInvoicePayments(profile?.role)
+  const canExecutePayment = canExecuteInvoicePayments(profile?.role)
 
   const load = useCallback(async () => {
     if (!id) return
@@ -49,11 +52,61 @@ export function InvoiceDetail() {
     await load()
   }
 
-  const pay = async (event: React.FormEvent) => {
+  const preparePayment = async (event: React.FormEvent) => {
     event.preventDefault()
     try {
-      await addInvoicePayment(invoice.id, payment, profile?.id)
-      toast.success('Paiement enregistre avec succes')
+      await prepareInvoicePayment(invoice.id, payment, profile?.id)
+      toast.success('Paiement prepare pour validation Direction')
+      setPayment({ amount: 0, payment_mode: 'virement', payment_date: today, payment_reference: '', comment: '' })
+      await load()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Une erreur est survenue')
+    }
+  }
+
+  const validatePayment = async (paymentId: string) => {
+    const comment = window.prompt('Commentaire de validation du paiement (optionnel)') ?? ''
+    try {
+      await validateInvoicePayment(paymentId, profile?.id, comment)
+      toast.success('Paiement valide par la Direction')
+      await load()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Une erreur est survenue')
+    }
+  }
+
+  const refusePayment = async (paymentId: string) => {
+    const reason = window.prompt('Motif du refus du paiement')
+    if (!reason) return
+    try {
+      await refuseInvoicePayment(paymentId, profile?.id, reason)
+      toast.success('Paiement refuse')
+      await load()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Une erreur est survenue')
+    }
+  }
+
+  const startExecution = (item: InvoicePayment) => {
+    setExecutionPaymentId(item.id)
+    setPayment({
+      amount: Number(item.amount ?? 0),
+      payment_mode: item.payment_mode,
+      payment_date: item.payment_date || today,
+      payment_reference: item.payment_reference ?? '',
+      cash_account: item.cash_account ?? '',
+      beneficiary: item.beneficiary ?? invoice.suppliers?.name ?? '',
+      comment: item.execution_comment ?? '',
+    })
+  }
+
+  const executePayment = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!executionPaymentId) return
+    try {
+      await executeInvoicePayment(executionPaymentId, payment, profile?.id)
+      toast.success('Paiement execute et facture mise a jour')
+      setExecutionPaymentId(null)
       setPayment({ amount: 0, payment_mode: 'virement', payment_date: today, payment_reference: '', comment: '' })
       await load()
     } catch (error) {
@@ -106,11 +159,11 @@ export function InvoiceDetail() {
           </div>
         </div>
         <div className="surface p-5">
-          <p className="eyebrow">Lecture cout matiere interne</p>
+          <p className="eyebrow">Lecture valeur d'entree stock</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <Info label="Mode fiscal" value={invoice.invoice_tax_mode ? invoiceTaxModeLabels[invoice.invoice_tax_mode] : '-'} />
-            <Info label="Methode de cout interne" value={invoice.effective_cost_method ? effectiveCostMethodLabels[invoice.effective_cost_method] : '-'} />
-            <Info label="Cout matiere interne" value={`${Number(invoice.effective_material_cost_total ?? invoice.amount_ht ?? 0).toLocaleString('fr-FR')} Ar`} />
+            <Info label="Methode de valeur stock" value={invoice.effective_cost_method ? effectiveCostMethodLabels[invoice.effective_cost_method] : '-'} />
+            <Info label="Valeur d'entree stock" value={`${Number(invoice.effective_material_cost_total ?? invoice.amount_ht ?? 0).toLocaleString('fr-FR')} Ar`} />
             <Info label="Source du cout" value={invoice.effective_cost_source || '-'} />
           </div>
           {invoice.effective_cost_note && <p className="mt-3 text-sm text-slate-600">{invoice.effective_cost_note}</p>}
@@ -145,18 +198,42 @@ export function InvoiceDetail() {
         </section>
       )}
 
-      {canPay && Number(invoice.amount_remaining ?? 0) > 0 && ['validee', 'a_payer', 'partiellement_paye'].includes(invoice.status) && (
-        <form onSubmit={pay} className="surface grid gap-3 p-5 md:grid-cols-[1fr_180px_180px_1fr_auto] md:items-end">
+      {canPreparePayment && Number(invoice.amount_remaining ?? 0) > 0 && ['validee', 'a_payer', 'partiellement_paye'].includes(invoice.status) && (
+        <form onSubmit={preparePayment} className="surface grid gap-3 p-5 md:grid-cols-[1fr_180px_180px_1fr_auto] md:items-end">
+          <div className="md:col-span-5">
+            <p className="eyebrow">Paiement fournisseur</p>
+            <h2 className="mt-1 text-lg font-bold text-slate-950">Preparer un paiement</h2>
+            <p className="mt-1 text-sm text-slate-600">Le paiement prepare devra etre valide par la Direction avant execution.</p>
+          </div>
           <label className="block"><span className="field-label">Montant du paiement</span><input type="number" value={payment.amount} onChange={(event) => setPayment((current) => ({ ...current, amount: Number(event.target.value) }))} className="input mt-2" /></label>
-          <label className="block"><span className="field-label">Mode de paiement</span><select value={payment.payment_mode} onChange={(event) => setPayment((current) => ({ ...current, payment_mode: event.target.value as typeof payment.payment_mode }))} className="input mt-2">{paymentModes.map((mode) => <option key={mode} value={mode}>{paymentModeLabels[mode]}</option>)}</select></label>
-          <label className="block"><span className="field-label">Date de paiement</span><input type="date" value={payment.payment_date} onChange={(event) => setPayment((current) => ({ ...current, payment_date: event.target.value }))} className="input mt-2" /></label>
+          <label className="block"><span className="field-label">Mode prevu</span><select value={payment.payment_mode} onChange={(event) => setPayment((current) => ({ ...current, payment_mode: event.target.value as typeof payment.payment_mode }))} className="input mt-2">{paymentModes.map((mode) => <option key={mode} value={mode}>{paymentModeLabels[mode]}</option>)}</select></label>
+          <label className="block"><span className="field-label">Date prevue</span><input type="date" value={payment.payment_date} onChange={(event) => setPayment((current) => ({ ...current, payment_date: event.target.value }))} className="input mt-2" /></label>
+          <label className="block"><span className="field-label">Reference preparatoire</span><input value={payment.payment_reference} onChange={(event) => setPayment((current) => ({ ...current, payment_reference: event.target.value }))} className="input mt-2" /></label>
+          <button type="submit" className="btn-primary">Preparer</button>
+          <label className="block md:col-span-2"><span className="field-label">Caisse ou compte concerne</span><input value={payment.cash_account ?? ''} onChange={(event) => setPayment((current) => ({ ...current, cash_account: event.target.value }))} className="input mt-2" /></label>
+          <label className="block md:col-span-2"><span className="field-label">Observation</span><input value={payment.comment ?? ''} onChange={(event) => setPayment((current) => ({ ...current, comment: event.target.value }))} className="input mt-2" /></label>
+        </form>
+      )}
+
+      {executionPaymentId && (
+        <form onSubmit={executePayment} className="surface grid gap-3 border border-emerald-200 bg-emerald-50 p-5 md:grid-cols-[1fr_180px_180px_1fr_auto] md:items-end">
+          <div className="md:col-span-5">
+            <p className="eyebrow">Paiement valide Direction</p>
+            <h2 className="mt-1 text-lg font-bold text-emerald-950">Executer le paiement reel</h2>
+          </div>
+          <label className="block"><span className="field-label">Montant reellement paye</span><input type="number" value={payment.amount} onChange={(event) => setPayment((current) => ({ ...current, amount: Number(event.target.value) }))} className="input mt-2" /></label>
+          <label className="block"><span className="field-label">Mode reel</span><select value={payment.payment_mode} onChange={(event) => setPayment((current) => ({ ...current, payment_mode: event.target.value as typeof payment.payment_mode }))} className="input mt-2">{paymentModes.map((mode) => <option key={mode} value={mode}>{paymentModeLabels[mode]}</option>)}</select></label>
+          <label className="block"><span className="field-label">Date reelle</span><input type="date" value={payment.payment_date} onChange={(event) => setPayment((current) => ({ ...current, payment_date: event.target.value }))} className="input mt-2" /></label>
           <label className="block"><span className="field-label">Reference paiement</span><input value={payment.payment_reference} onChange={(event) => setPayment((current) => ({ ...current, payment_reference: event.target.value }))} className="input mt-2" /></label>
-          <button type="submit" className="btn-primary">Enregistrer paiement</button>
+          <button type="submit" className="btn-primary">Executer</button>
+          <label className="block md:col-span-2"><span className="field-label">Beneficiaire</span><input value={payment.beneficiary ?? ''} onChange={(event) => setPayment((current) => ({ ...current, beneficiary: event.target.value }))} className="input mt-2" /></label>
+          <label className="block md:col-span-2"><span className="field-label">Observation execution</span><input value={payment.comment ?? ''} onChange={(event) => setPayment((current) => ({ ...current, comment: event.target.value }))} className="input mt-2" /></label>
+          <button type="button" onClick={() => setExecutionPaymentId(null)} className="btn-secondary">Annuler</button>
         </form>
       )}
 
       <section className="surface overflow-hidden">
-        <div className="border-b border-slate-200 px-5 py-4"><h2 className="text-lg font-bold">Articles factures et cout interne</h2></div>
+        <div className="border-b border-slate-200 px-5 py-4"><h2 className="text-lg font-bold">Articles factures et valeur stock</h2></div>
         <div className="divide-y divide-slate-200">
           {invoice.invoice_items?.map((item) => (
             <div key={item.id} className="grid gap-3 px-5 py-4 md:grid-cols-[1fr_120px_130px_130px_160px] md:items-center">
@@ -164,7 +241,7 @@ export function InvoiceDetail() {
               <span>{Number(item.quantity).toLocaleString('fr-FR')} {item.units?.abbreviation}</span>
               <span>{Number(item.unit_price).toLocaleString('fr-FR')} Ar</span>
               <span>{Number(item.total ?? 0).toLocaleString('fr-FR')} Ar</span>
-              <span className="text-sm font-semibold text-[#1E3A8A]">{Number(item.effective_material_unit_cost ?? item.unit_price ?? 0).toLocaleString('fr-FR')} Ar cout interne</span>
+              <span className="text-sm font-semibold text-[#1E3A8A]">{Number(item.effective_material_unit_cost ?? item.unit_price ?? 0).toLocaleString('fr-FR')} Ar valeur stock</span>
             </div>
           ))}
           {(invoice.invoice_items?.length ?? 0) === 0 && <p className="p-5 text-sm text-slate-600">Aucun article.</p>}
@@ -175,21 +252,28 @@ export function InvoiceDetail() {
         <div className="border-b border-slate-200 px-5 py-4"><h2 className="text-lg font-bold">Paiements</h2></div>
         <div className="divide-y divide-slate-200">
           {(invoice.invoice_payments?.length ?? 0) > 0 && (
-            <div className="hidden grid-cols-[130px_150px_180px_1fr_150px] gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 md:grid">
+            <div className="hidden grid-cols-[130px_150px_180px_180px_1fr_190px] gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 md:grid">
               <span>Date</span>
               <span>Montant</span>
               <span>Mode</span>
+              <span>Statut</span>
               <span>Reference paiement</span>
-              <span>Saisi par</span>
+              <span>Actions</span>
             </div>
           )}
           {invoice.invoice_payments?.map((item) => (
-            <div key={item.id} className="grid gap-3 px-5 py-4 md:grid-cols-[130px_150px_180px_1fr_150px] md:items-center">
-              <span>{new Date(item.payment_date).toLocaleDateString('fr-FR')}</span>
+            <div key={item.id} className="grid gap-3 px-5 py-4 md:grid-cols-[130px_150px_180px_180px_1fr_190px] md:items-center">
+              <span>{new Date(item.planned_payment_date ?? item.payment_date).toLocaleDateString('fr-FR')}</span>
               <span>{Number(item.amount).toLocaleString('fr-FR')} Ar</span>
               <span>{paymentModeLabels[item.payment_mode]}</span>
+              <span className="w-fit rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-800">{invoicePaymentStatusLabels[item.status ?? 'execute']}</span>
               <span className="font-semibold text-slate-900">{item.payment_reference || '-'}</span>
-              <span>{item.creator?.full_name || '-'}</span>
+              <span className="flex flex-wrap gap-2">
+                {canValidatePayment && item.status === 'a_valider_direction' && <button type="button" onClick={() => validatePayment(item.id)} className="btn-secondary px-3 py-2 text-emerald-700">Valider</button>}
+                {canValidatePayment && item.status === 'a_valider_direction' && <button type="button" onClick={() => refusePayment(item.id)} className="btn-secondary px-3 py-2 text-red-700">Refuser</button>}
+                {canExecutePayment && item.status === 'a_executer' && <button type="button" onClick={() => startExecution(item)} className="btn-secondary px-3 py-2">Executer</button>}
+                {item.status === 'execute' && <span className="text-sm text-slate-500">Par {item.executor?.full_name || item.creator?.full_name || '-'}</span>}
+              </span>
             </div>
           ))}
           {(invoice.invoice_payments?.length ?? 0) === 0 && <p className="p-5 text-sm text-slate-600">Aucun paiement.</p>}

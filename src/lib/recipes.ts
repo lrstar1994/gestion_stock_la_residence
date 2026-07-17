@@ -133,6 +133,7 @@ export type PendingIngredient = {
   quantity: number
   unit_name: string
   unit_price: number
+  conversion_factor?: number | null
   status: PendingIngredientStatus
   resolved_article_id: string | null
   candidate_article_ids: string[]

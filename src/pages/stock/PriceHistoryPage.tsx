@@ -49,18 +49,19 @@ export function PriceHistoryPage() {
       </section>
 
       <section className="surface overflow-hidden">
-        <div className="hidden grid-cols-[140px_170px_130px_130px_130px_1fr] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
-          <span>Date</span><span>Reference</span><span>Quantite</span><span>Prix</span><span>Source</span><span>Lien</span>
+        <div className="hidden grid-cols-[140px_170px_120px_130px_140px_130px_1fr] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
+          <span>Date</span><span>Reference</span><span>Quantite</span><span>Prix</span><span>Total valorise</span><span>Source</span><span>Lien</span>
         </div>
         <div className="divide-y divide-slate-200">
           {rows.map((row) => (
-            <div key={row.id} className="grid gap-3 px-5 py-4 xl:grid-cols-[140px_170px_130px_130px_130px_1fr] xl:items-center">
+            <div key={row.id} className="grid gap-3 px-5 py-4 xl:grid-cols-[140px_170px_120px_130px_140px_130px_1fr] xl:items-center">
               <span>{new Date(row.movement_date).toLocaleDateString('fr-FR')}</span>
               <span className="font-bold text-[#1E3A8A]">{row.movement_reference}</span>
               <span>{Number(row.quantity).toLocaleString('fr-FR')}</span>
               <span>{Number(row.unit_cost).toLocaleString('fr-FR')} Ar</span>
+              <span>{Number(row.total_cost ?? 0).toLocaleString('fr-FR')} Ar</span>
               <span>{priceSourceLabels[row.price_source]}</span>
-              <span>{row.reference_type || '-'}</span>
+              <span>{row.reference_type || '-'}{row.effective_cost_method ? ` - ${row.effective_cost_method}` : ''}</span>
             </div>
           ))}
           {rows.length === 0 && <p className="p-5 text-sm text-slate-600">Aucun historique de prix.</p>}

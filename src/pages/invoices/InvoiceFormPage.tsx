@@ -9,8 +9,8 @@ import { useAuth } from '../../hooks/useAuth'
 import type { Article } from '../../lib/catalog'
 import { calculateInvoiceItemsTotal, paymentModeLabels, paymentModes } from '../../lib/invoices'
 import type { InvoiceFormValues } from '../../lib/invoices'
-import { calculateMaterialCost, invoiceTaxModeLabels, invoiceTaxModes } from '../../lib/materialCosts'
-import type { InvoiceTaxMode } from '../../lib/materialCosts'
+import { calculateMaterialCost, invoiceTaxModeLabels, invoiceTaxModes, supplierTaxStatusLabels, supplierTaxStatuses } from '../../lib/materialCosts'
+import type { InvoiceTaxMode, SupplierTaxStatus } from '../../lib/materialCosts'
 import type { Reception } from '../../lib/receptions'
 import type { Supplier } from '../../lib/suppliers'
 
@@ -24,6 +24,7 @@ const emptyForm: InvoiceFormValues = {
   due_date: today,
   amount_ht: 0,
   amount_tva: 0,
+  supplier_tax_status: 'unknown',
   invoice_tax_mode: 'invoice_with_recoverable_vat',
   vat_rate: 20,
   vat_recoverable: true,
@@ -37,6 +38,17 @@ const emptyForm: InvoiceFormValues = {
   purchase_order_id: '',
   cash_purchase_id: '',
   items: [],
+}
+
+function fiscalDefaultsFromSupplier(supplier?: Supplier) {
+  return {
+    supplier_tax_status: supplier?.supplier_tax_status ?? 'unknown',
+    invoice_tax_mode: supplier?.default_invoice_tax_mode ?? 'invoice_with_recoverable_vat',
+    vat_rate: Number(supplier?.default_vat_rate ?? 20),
+    vat_recoverable: supplier?.default_vat_recoverable ?? true,
+    declared_extra_tax_rate: supplier?.default_declared_extra_tax_enabled ? Number(supplier.default_declared_extra_tax_rate ?? 0) : 0,
+    declared_extra_tax_amount: 0,
+  }
 }
 
 export function InvoiceFormPage() {
@@ -66,7 +78,9 @@ export function InvoiceFormPage() {
   const selectedReception = receptions.find((reception) => reception.id === values.reception_id)
   const receptionDifference = selectedReception ? amountTtc - Number(selectedReception.total_amount ?? 0) : 0
 
-  const selectReception = useCallback((reception: Reception) => {
+  const selectReception = useCallback((reception: Reception, supplierSource = suppliers) => {
+    const firstItem = reception.reception_items?.[0]
+    const supplierDefaults = fiscalDefaultsFromSupplier(supplierSource.find((supplier) => supplier.id === reception.supplier_id))
     setValues((current) => ({
       ...current,
       supplier_id: reception.supplier_id,
@@ -74,11 +88,12 @@ export function InvoiceFormPage() {
       invoice_date: reception.invoice_date,
       due_date: current.due_date || reception.invoice_date,
       amount_ht: Number(reception.total_amount ?? 0),
-      invoice_tax_mode: current.invoice_tax_mode ?? 'invoice_with_recoverable_vat',
-      vat_rate: current.vat_rate ?? 20,
-      vat_recoverable: current.vat_recoverable ?? true,
-      declared_extra_tax_rate: current.declared_extra_tax_rate ?? 0,
-      declared_extra_tax_amount: current.declared_extra_tax_amount ?? 0,
+      supplier_tax_status: firstItem?.supplier_tax_status ?? supplierDefaults.supplier_tax_status,
+      invoice_tax_mode: firstItem?.invoice_tax_mode ?? supplierDefaults.invoice_tax_mode,
+      vat_rate: Number(firstItem?.vat_rate ?? supplierDefaults.vat_rate),
+      vat_recoverable: firstItem?.vat_recoverable ?? supplierDefaults.vat_recoverable,
+      declared_extra_tax_rate: Number(firstItem?.declared_extra_tax_rate ?? supplierDefaults.declared_extra_tax_rate),
+      declared_extra_tax_amount: Number(firstItem?.declared_extra_tax_amount ?? supplierDefaults.declared_extra_tax_amount),
       reception_id: reception.id,
       purchase_order_id: reception.purchase_order_id ?? '',
       cash_purchase_id: reception.cash_purchase_id ?? '',
@@ -97,7 +112,30 @@ export function InvoiceFormPage() {
         comment: '',
       })) ?? [],
     }))
-  }, [])
+  }, [suppliers])
+
+  const changeSupplier = (supplierId: string) => {
+    const defaults = fiscalDefaultsFromSupplier(suppliers.find((supplier) => supplier.id === supplierId))
+    setValues((current) => ({
+      ...current,
+      supplier_id: supplierId,
+      supplier_tax_status: defaults.supplier_tax_status,
+      invoice_tax_mode: defaults.invoice_tax_mode,
+      vat_rate: defaults.vat_rate,
+      vat_recoverable: defaults.vat_recoverable,
+      declared_extra_tax_rate: defaults.declared_extra_tax_rate,
+      declared_extra_tax_amount: defaults.declared_extra_tax_amount,
+      items: current.items.map((item) => ({
+        ...item,
+        supplier_tax_status: defaults.supplier_tax_status,
+        invoice_tax_mode: defaults.invoice_tax_mode,
+        vat_rate: defaults.vat_rate,
+        vat_recoverable: defaults.vat_recoverable,
+        declared_extra_tax_rate: defaults.declared_extra_tax_rate,
+        declared_extra_tax_amount: defaults.declared_extra_tax_amount,
+      })),
+    }))
+  }
 
   const load = useCallback(async () => {
     const [articlesResult, loadedSuppliers, loadedReceptions] = await Promise.all([
@@ -119,6 +157,7 @@ export function InvoiceFormPage() {
         due_date: invoice.due_date,
         amount_ht: Number(invoice.amount_ht ?? 0),
         amount_tva: Number(invoice.amount_tva ?? 0),
+        supplier_tax_status: invoice.supplier_tax_status ?? 'unknown',
         invoice_tax_mode: invoice.invoice_tax_mode ?? 'invoice_with_recoverable_vat',
         vat_rate: Number(invoice.vat_rate ?? 20),
         vat_recoverable: invoice.vat_recoverable ?? true,
@@ -149,7 +188,7 @@ export function InvoiceFormPage() {
     } else {
       const receptionId = searchParams.get('receptionId')
       const reception = loadedReceptions.find((item) => item.id === receptionId)
-      if (reception) selectReception(reception as Reception)
+      if (reception) selectReception(reception as Reception, loadedSuppliers)
     }
   }, [id, searchParams, selectReception])
 
@@ -195,7 +234,7 @@ export function InvoiceFormPage() {
           <span className="field-label">Numero facture interne</span>
           <input value={values.reference ?? ''} onChange={(event) => setValues((current) => ({ ...current, reference: event.target.value }))} className="input mt-2" placeholder="Laisser vide pour generer automatiquement" />
         </label>
-        <label className="block"><span className="field-label">Fournisseur</span><select value={values.supplier_id} onChange={(event) => setValues((current) => ({ ...current, supplier_id: event.target.value }))} className="input mt-2"><option value="">Selectionner</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
+        <label className="block"><span className="field-label">Fournisseur</span><select value={values.supplier_id} onChange={(event) => changeSupplier(event.target.value)} className="input mt-2"><option value="">Selectionner</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
         <label className="block"><span className="field-label">Numero facture fournisseur</span><input value={values.invoice_number} onChange={(event) => setValues((current) => ({ ...current, invoice_number: event.target.value }))} className="input mt-2" /></label>
         <label className="block"><span className="field-label">Date facture</span><input type="date" value={values.invoice_date} onChange={(event) => setValues((current) => ({ ...current, invoice_date: event.target.value }))} className="input mt-2" /></label>
         <label className="block"><span className="field-label">Date echeance</span><input type="date" value={values.due_date} onChange={(event) => setValues((current) => ({ ...current, due_date: event.target.value }))} className="input mt-2" /></label>
@@ -208,10 +247,16 @@ export function InvoiceFormPage() {
 
       <section className="surface grid gap-4 p-5 md:grid-cols-2">
         <div className="md:col-span-2">
-          <p className="eyebrow">Fiscalite et cout matiere interne</p>
-          <h2 className="mt-2 text-lg font-bold text-slate-950">Cout matiere interne de la facture</h2>
+          <p className="eyebrow">Fiscalite et valeur d'entree stock</p>
+          <h2 className="mt-2 text-lg font-bold text-slate-950">Valeur d'entree stock de la facture</h2>
           <p className="mt-1 text-sm text-slate-600">Ces informations distinguent la lecture comptable de la valorisation interne du stock.</p>
         </div>
+        <label className="block">
+          <span className="field-label">Statut fiscal fournisseur</span>
+          <select value={values.supplier_tax_status ?? 'unknown'} onChange={(event) => setValues((current) => ({ ...current, supplier_tax_status: event.target.value as SupplierTaxStatus }))} className="input mt-2">
+            {supplierTaxStatuses.map((status) => <option key={status} value={status}>{supplierTaxStatusLabels[status]}</option>)}
+          </select>
+        </label>
         <label className="block">
           <span className="field-label">Mode fiscal</span>
           <select value={values.invoice_tax_mode ?? 'invoice_with_recoverable_vat'} onChange={(event) => setValues((current) => ({ ...current, invoice_tax_mode: event.target.value as InvoiceTaxMode }))} className="input mt-2">
@@ -231,14 +276,14 @@ export function InvoiceFormPage() {
           <input type="number" value={values.declared_extra_tax_rate ?? 0} onChange={(event) => setValues((current) => ({ ...current, declared_extra_tax_rate: Number(event.target.value) }))} className="input mt-2" />
         </label>
         <label className="block md:col-span-2">
-          <span className="field-label">Note cout matiere interne</span>
+          <span className="field-label">Note valeur d'entree stock</span>
           <input value={values.effective_cost_note ?? ''} onChange={(event) => setValues((current) => ({ ...current, effective_cost_note: event.target.value }))} className="input mt-2" placeholder="Motif ou precision si cout exceptionnel" />
         </label>
         <div className="rounded-md border border-[#D4AF37]/30 bg-amber-50 p-4 text-sm text-slate-800 md:col-span-2">
           <p>TVA recuperable : <strong>{materialCost.recoverable_vat_amount.toLocaleString('fr-FR')} Ar</strong></p>
           <p>TVA non recuperable : <strong>{materialCost.non_recoverable_vat_amount.toLocaleString('fr-FR')} Ar</strong></p>
           <p>Charge declarative : <strong>{materialCost.declared_extra_tax_amount.toLocaleString('fr-FR')} Ar</strong></p>
-          <p>Cout matiere interne estime : <strong>{Number(materialCost.effective_material_cost_total ?? 0).toLocaleString('fr-FR')} Ar</strong></p>
+          <p>Valeur d'entree stock estimee : <strong>{Number(materialCost.effective_material_cost_total ?? 0).toLocaleString('fr-FR')} Ar</strong></p>
         </div>
       </section>
 

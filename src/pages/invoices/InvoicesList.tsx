@@ -1,17 +1,19 @@
 import { Download, FileSpreadsheet, Plus, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { listInvoices } from '../../api/modules/invoices.api'
 import { listSuppliers } from '../../api/modules/suppliers.api'
 import { useAuth } from '../../hooks/useAuth'
 import { exportInvoicesToCsv, exportInvoicesToExcel } from '../../lib/invoiceExports'
-import { canExportInvoices, canManageInvoices, invoiceStatusLabels, invoiceStatuses, paymentModeLabels, paymentModes } from '../../lib/invoices'
+import { canExportInvoices, canManageInvoices, invoicePaymentStatusLabels, invoiceStatusLabels, invoiceStatuses, paymentModeLabels, paymentModes } from '../../lib/invoices'
 import type { Invoice, InvoiceStatus, PaymentMode } from '../../lib/invoices'
 import type { Supplier } from '../../lib/suppliers'
 
 export function InvoicesList() {
   const { profile } = useAuth()
+  const location = useLocation()
+  const isPayablesView = location.pathname === '/invoices/payables'
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [search, setSearch] = useState('')
@@ -22,7 +24,7 @@ export function InvoicesList() {
   const [total, setTotal] = useState(0)
   const pageSize = 10
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
-  const filters = useMemo(() => ({ search, status, supplierId, paymentMode, page, pageSize }), [search, status, supplierId, paymentMode, page])
+  const filters = useMemo(() => ({ search, status, supplierId, paymentMode, payableOnly: isPayablesView, page, pageSize }), [search, status, supplierId, paymentMode, isPayablesView, page])
   const canManage = canManageInvoices(profile?.role)
   const canExport = canExportInvoices(profile?.role)
 
@@ -57,7 +59,7 @@ export function InvoicesList() {
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div><p className="eyebrow">Factures</p><h1 className="page-title mt-2">Factures fournisseurs</h1></div>
+        <div><p className="eyebrow">Factures</p><h1 className="page-title mt-2">{isPayablesView ? 'Factures fournisseurs a payer' : 'Factures fournisseurs'}</h1></div>
         <div className="flex flex-wrap gap-2">
           {canExport && <button type="button" onClick={() => exportCurrent('csv')} className="btn-secondary"><Download className="mr-2 h-4 w-4" /> CSV</button>}
           {canExport && <button type="button" onClick={() => exportCurrent('xlsx')} className="btn-secondary"><FileSpreadsheet className="mr-2 h-4 w-4" /> Excel</button>}
@@ -80,22 +82,25 @@ export function InvoicesList() {
       </section>
 
       <section className="surface overflow-hidden">
-        <div className="hidden grid-cols-[150px_1fr_120px_120px_130px_130px_140px_140px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
-          <span>Reference</span><span>Fournisseur</span><span>Date</span><span>Echeance</span><span>TTC</span><span>Solde</span><span>Statut</span><span>Paiement</span>
+        <div className="hidden grid-cols-[150px_1fr_120px_120px_130px_130px_140px_170px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
+          <span>Reference</span><span>Fournisseur</span><span>Date</span><span>Echeance</span><span>TTC</span><span>Solde</span><span>Statut</span><span>Suivi paiement</span>
         </div>
         <div className="divide-y divide-slate-200">
-          {invoices.map((invoice) => (
-            <Link key={invoice.id} to={`/invoices/${invoice.id}`} className="grid gap-3 px-5 py-4 transition hover:bg-slate-50 xl:grid-cols-[150px_1fr_120px_120px_130px_130px_140px_140px] xl:items-center">
-              <span className="font-bold text-[#1E3A8A]">{invoice.reference}</span>
-              <span><span className="block font-semibold">{invoice.suppliers?.name}</span><span className="text-xs text-slate-500">{invoice.invoice_number}</span></span>
-              <span>{new Date(invoice.invoice_date).toLocaleDateString('fr-FR')}</span>
-              <span className={invoice.due_date < new Date().toISOString().slice(0, 10) && Number(invoice.amount_remaining) > 0 ? 'font-bold text-red-700' : ''}>{new Date(invoice.due_date).toLocaleDateString('fr-FR')}</span>
-              <span>{Number(invoice.amount_ttc ?? 0).toLocaleString('fr-FR')} Ar</span>
-              <span>{Number(invoice.amount_remaining ?? 0).toLocaleString('fr-FR')} Ar</span>
-              <Badge status={invoice.status} />
-              <span>{invoice.payment_mode ? paymentModeLabels[invoice.payment_mode] : '-'}</span>
-            </Link>
-          ))}
+          {invoices.map((invoice) => {
+            const latestPayment = [...(invoice.invoice_payments ?? [])].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+            return (
+              <Link key={invoice.id} to={`/invoices/${invoice.id}`} className="grid gap-3 px-5 py-4 transition hover:bg-slate-50 xl:grid-cols-[150px_1fr_120px_120px_130px_130px_140px_170px] xl:items-center">
+                <span className="font-bold text-[#1E3A8A]">{invoice.reference}</span>
+                <span><span className="block font-semibold">{invoice.suppliers?.name}</span><span className="text-xs text-slate-500">{invoice.invoice_number}</span></span>
+                <span>{new Date(invoice.invoice_date).toLocaleDateString('fr-FR')}</span>
+                <span className={invoice.due_date < new Date().toISOString().slice(0, 10) && Number(invoice.amount_remaining) > 0 ? 'font-bold text-red-700' : ''}>{new Date(invoice.due_date).toLocaleDateString('fr-FR')}</span>
+                <span>{Number(invoice.amount_ttc ?? 0).toLocaleString('fr-FR')} Ar</span>
+                <span>{Number(invoice.amount_remaining ?? 0).toLocaleString('fr-FR')} Ar</span>
+                <Badge status={invoice.status} />
+                <span className="text-sm font-semibold text-slate-700">{latestPayment ? invoicePaymentStatusLabels[latestPayment.status ?? 'execute'] : (invoice.payment_mode ? paymentModeLabels[invoice.payment_mode] : 'A preparer')}</span>
+              </Link>
+            )
+          })}
           {invoices.length === 0 && <p className="p-5 text-sm text-slate-600">Aucune facture.</p>}
         </div>
       </section>

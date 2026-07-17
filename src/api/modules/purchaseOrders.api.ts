@@ -54,7 +54,7 @@ export async function listPurchaseOrders(filters: PurchaseOrderFilters = {}) {
 export async function getPurchaseOrder(id: string) {
   const { data, error } = await supabase.schema('stock')
     .from('purchase_orders')
-    .select('*, suppliers(*), creator:profiles!purchase_orders_created_by_fkey(id, full_name, role), validator:profiles!purchase_orders_validated_by_fkey(id, full_name), sender:profiles!purchase_orders_sent_by_fkey(id, full_name), purchase_order_items(*, articles(id, name, families(id, name)), units(id, name, abbreviation)), purchase_order_needs(*, purchase_needs(*, articles(id, name, families(id, name)), units(id, name, abbreviation), requester:profiles!purchase_needs_created_by_fkey(id, full_name))), purchase_order_history(*, actor:profiles!purchase_order_history_created_by_fkey(id, full_name)), purchase_order_documents(*)')
+    .select('*, suppliers(*), creator:profiles!purchase_orders_created_by_fkey(id, full_name, role), validator:profiles!purchase_orders_validated_by_fkey(id, full_name), sender:profiles!purchase_orders_sent_by_fkey(id, full_name), purchase_order_items(*, articles(id, name, unit_id, families(id, name), units(id, name, abbreviation)), units(id, name, abbreviation), stock_unit:units!purchase_order_items_stock_unit_id_fkey(id, name, abbreviation)), purchase_order_needs(*, purchase_needs(*, articles(id, name, families(id, name)), units(id, name, abbreviation), requester:profiles!purchase_needs_created_by_fkey(id, full_name))), purchase_order_history(*, actor:profiles!purchase_order_history_created_by_fkey(id, full_name)), purchase_order_documents(*)')
     .eq('id', id)
     .single()
 
@@ -129,7 +129,11 @@ async function replaceOrderItems(orderId: string, items: PurchaseOrderFormValues
     article_id: item.article_id,
     quantity_ordered: item.quantity_ordered,
     unit_id: item.unit_id,
+    stock_unit_id: item.stock_unit_id || null,
+    conversion_factor: item.conversion_factor ?? 1,
+    quantity_ordered_stock: item.quantity_ordered_stock ?? item.quantity_ordered,
     unit_price: item.unit_price,
+    unit_price_stock: item.unit_price_stock ?? item.unit_price,
     comment: cleanNullable(item.comment),
   }))
 
@@ -231,15 +235,23 @@ export async function receivePurchaseOrder(id: string, items: PurchaseOrderItem[
     const hasLineDifference = Boolean(item.difference_type) || Boolean(item.difference_comment)
     const differenceDescription = cleanNullable(item.difference_comment) ?? 'Ecart signale depuis la commande fournisseur'
     const anomalyType = mapOrderDifferenceToReceptionAnomaly(item.difference_type)
+    const stockUnitId = currentItem.stock_unit_id ?? currentItem.articles?.unit_id ?? currentItem.unit_id
+    const factor = Number(currentItem.conversion_factor ?? 1)
+    const stockQuantityToReceive = quantityToReceive * factor
 
     receptionItems.push({
       article_id: currentItem.article_id,
       quantity_ordered: Math.max(0, ordered - alreadyReceived),
-      quantity_delivered: quantityToReceive,
-      quantity_accepted: quantityToReceive,
-      unit_id: currentItem.unit_id,
+      quantity_delivered: stockQuantityToReceive,
+      quantity_accepted: stockQuantityToReceive,
+      quantity_delivered_display: quantityToReceive,
+      quantity_accepted_display: quantityToReceive,
+      unit_id: stockUnitId,
+      unit_display_id: currentItem.unit_id,
+      conversion_factor: factor,
       unit_price_planned: Number(currentItem.unit_price ?? 0),
-      unit_price_real: Number(currentItem.unit_price ?? 0),
+      unit_price_real: Number(currentItem.unit_price_stock ?? (factor > 0 ? Number(currentItem.unit_price ?? 0) / factor : currentItem.unit_price) ?? 0),
+      unit_price_display: Number(currentItem.unit_price ?? 0),
       quality: hasLineDifference ? 'a_verifier' : 'conforme',
       quality_comment: hasLineDifference ? differenceDescription : '',
       has_anomaly: hasLineDifference,

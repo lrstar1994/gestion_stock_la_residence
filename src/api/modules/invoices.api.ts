@@ -12,6 +12,7 @@ type InvoiceFilters = {
   paymentMode?: PaymentMode | 'all'
   fromDate?: string
   toDate?: string
+  payableOnly?: boolean
   page?: number
   pageSize?: number
 }
@@ -29,7 +30,7 @@ export async function listInvoices(filters: InvoiceFilters = {}) {
 
   let query = supabase.schema('stock')
     .from('invoices')
-    .select('*, suppliers(*), receptions(id, reference, invoice_number, total_amount), creator:profiles!invoices_created_by_fkey(id, full_name)', { count: 'exact' })
+    .select('*, suppliers(*), receptions(id, reference, invoice_number, total_amount), creator:profiles!invoices_created_by_fkey(id, full_name), invoice_payments(*)', { count: 'exact' })
     .order('due_date', { ascending: true })
     .range(from, to)
 
@@ -38,6 +39,7 @@ export async function listInvoices(filters: InvoiceFilters = {}) {
   if (filters.paymentMode && filters.paymentMode !== 'all') query = query.eq('payment_mode', filters.paymentMode)
   if (filters.fromDate) query = query.gte('invoice_date', filters.fromDate)
   if (filters.toDate) query = query.lte('invoice_date', filters.toDate)
+  if (filters.payableOnly) query = query.gt('amount_remaining', 0).in('status', ['validee', 'a_payer', 'partiellement_paye', 'conteste'])
   if (filters.search?.trim()) {
     const term = filters.search.trim()
     query = query.or(`reference.ilike.%${term}%,invoice_number.ilike.%${term}%`)
@@ -51,7 +53,7 @@ export async function listInvoices(filters: InvoiceFilters = {}) {
 export async function getInvoice(id: string) {
   const { data, error } = await supabase.schema('stock')
     .from('invoices')
-    .select('*, suppliers(*), receptions(id, reference, invoice_number, total_amount), validator:profiles!invoices_validated_by_fkey(id, full_name), creator:profiles!invoices_created_by_fkey(id, full_name), invoice_items(*, articles(id, name, families(id, name)), units(id, name, abbreviation)), invoice_payments(*, creator:profiles!invoice_payments_created_by_fkey(id, full_name)), invoice_history(*, actor:profiles!invoice_history_created_by_fkey(id, full_name))')
+    .select('*, suppliers(*), receptions(id, reference, invoice_number, total_amount), validator:profiles!invoices_validated_by_fkey(id, full_name), creator:profiles!invoices_created_by_fkey(id, full_name), invoice_items(*, articles(id, name, families(id, name)), units(id, name, abbreviation)), invoice_payments(*, creator:profiles!invoice_payments_created_by_fkey(id, full_name), validator:profiles!invoice_payments_validated_by_fkey(id, full_name), executor:profiles!invoice_payments_executed_by_fkey(id, full_name)), invoice_history(*, actor:profiles!invoice_history_created_by_fkey(id, full_name))')
     .eq('id', id)
     .single()
   if (error) throw error
@@ -288,6 +290,95 @@ export async function validateInvoiceRecord(id: string, profileId?: string, comm
   await addInvoiceHistory(id, 'validation', `Facture validee${status === 'a_payer' ? ' et marquee a payer' : ''}`, profileId)
 }
 
+export async function prepareInvoicePayment(id: string, values: InvoicePaymentFormValues, profileId?: string) {
+  if (!values.payment_mode) throw new Error('Veuillez selectionner un mode de paiement')
+  const invoice = await getInvoice(id)
+  if (invoice.status === 'payee' || invoice.status === 'cloturee') throw new Error('Cette facture a deja ete payee')
+  if (!['validee', 'a_payer', 'partiellement_paye'].includes(invoice.status)) throw new Error('La facture doit etre validee avant paiement')
+  const pendingPreparedAmount = (invoice.invoice_payments ?? [])
+    .filter((payment) => ['a_valider_direction', 'a_executer'].includes(payment.status ?? ''))
+    .reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0)
+  if (Number(values.amount) > Number(invoice.amount_remaining ?? 0) - pendingPreparedAmount) throw new Error('Le montant prepare ne peut pas depasser le reste a payer')
+
+  const { error } = await supabase.schema('stock').from('invoice_payments').insert({
+    invoice_id: id,
+    amount: values.amount,
+    payment_mode: values.payment_mode,
+    payment_date: values.payment_date,
+    planned_payment_date: values.payment_date,
+    payment_reference: cleanNullable(values.payment_reference),
+    cash_account: cleanNullable(values.cash_account),
+    beneficiary: cleanNullable(values.beneficiary) ?? invoice.suppliers?.name ?? null,
+    comment: cleanNullable(values.comment),
+    status: 'a_valider_direction',
+    planned_by: profileId,
+    planned_at: new Date().toISOString(),
+    created_by: profileId,
+  })
+  if (error) throw error
+  await addInvoiceHistory(id, 'paiement_prepare', `${Number(values.amount).toLocaleString('fr-FR')} Ar prepare pour validation Direction`, profileId)
+}
+
+export async function validateInvoicePayment(paymentId: string, profileId?: string, comment?: string) {
+  const payment = await getInvoicePayment(paymentId)
+  if (payment.status !== 'a_valider_direction') throw new Error('Ce paiement ne peut pas etre valide')
+  const { error } = await supabase.schema('stock')
+    .from('invoice_payments')
+    .update({
+      status: 'a_executer',
+      validated_by: profileId,
+      validated_at: new Date().toISOString(),
+      validation_comment: cleanNullable(comment),
+    })
+    .eq('id', paymentId)
+  if (error) throw error
+  await addInvoiceHistory(payment.invoice_id, 'paiement_valide_direction', `${Number(payment.amount).toLocaleString('fr-FR')} Ar valide par la Direction`, profileId)
+}
+
+export async function refuseInvoicePayment(paymentId: string, profileId: string | undefined, reason: string) {
+  if (!reason.trim()) throw new Error('Motif obligatoire')
+  const payment = await getInvoicePayment(paymentId)
+  if (payment.status !== 'a_valider_direction') throw new Error('Ce paiement ne peut pas etre refuse')
+  const { error } = await supabase.schema('stock')
+    .from('invoice_payments')
+    .update({
+      status: 'refuse_direction',
+      refused_by: profileId,
+      refused_at: new Date().toISOString(),
+      refusal_reason: reason.trim(),
+    })
+    .eq('id', paymentId)
+  if (error) throw error
+  await addInvoiceHistory(payment.invoice_id, 'paiement_refuse_direction', reason.trim(), profileId)
+}
+
+export async function executeInvoicePayment(paymentId: string, values: InvoicePaymentFormValues, profileId?: string) {
+  if (!values.payment_mode) throw new Error('Veuillez selectionner un mode de paiement')
+  const payment = await getInvoicePayment(paymentId)
+  if (payment.status !== 'a_executer' && payment.status !== 'valide_direction') throw new Error('Ce paiement doit etre valide par la Direction avant execution')
+  const invoice = await getInvoice(payment.invoice_id)
+  if (Number(values.amount) > Number(invoice.amount_remaining ?? 0)) throw new Error('Le montant paye ne peut pas depasser le montant total')
+
+  const { error: paymentError } = await supabase.schema('stock')
+    .from('invoice_payments')
+    .update({
+      amount: values.amount,
+      payment_mode: values.payment_mode,
+      payment_date: values.payment_date,
+      payment_reference: cleanNullable(values.payment_reference),
+      cash_account: cleanNullable(values.cash_account),
+      beneficiary: cleanNullable(values.beneficiary) ?? invoice.suppliers?.name ?? null,
+      execution_comment: cleanNullable(values.comment),
+      status: 'execute',
+      executed_by: profileId,
+      executed_at: new Date().toISOString(),
+    })
+    .eq('id', paymentId)
+  if (paymentError) throw paymentError
+
+  await applyExecutedPayment(invoice, values, profileId)
+}
+
 export async function contestInvoice(id: string, profileId: string | undefined, reason: string) {
   if (!reason.trim()) throw new Error('Motif obligatoire')
   const { error } = await supabase.schema('stock')
@@ -319,11 +410,23 @@ export async function addInvoicePayment(id: string, values: InvoicePaymentFormVa
     payment_mode: values.payment_mode,
     payment_date: values.payment_date,
     payment_reference: cleanNullable(values.payment_reference),
+    cash_account: cleanNullable(values.cash_account),
+    beneficiary: cleanNullable(values.beneficiary) ?? invoice.suppliers?.name ?? null,
     comment: cleanNullable(values.comment),
+    status: 'execute',
+    planned_payment_date: values.payment_date,
+    planned_by: profileId,
+    planned_at: new Date().toISOString(),
+    executed_by: profileId,
+    executed_at: new Date().toISOString(),
     created_by: profileId,
   })
   if (paymentError) throw paymentError
 
+  await applyExecutedPayment(invoice, values, profileId)
+}
+
+async function applyExecutedPayment(invoice: Invoice, values: InvoicePaymentFormValues, profileId?: string) {
   const paid = Number(invoice.amount_paid ?? 0) + Number(values.amount)
   const total = Number(invoice.amount_ttc ?? 0)
   const status: InvoiceStatus = paid >= total ? 'payee' : 'partiellement_paye'
@@ -337,10 +440,27 @@ export async function addInvoicePayment(id: string, values: InvoicePaymentFormVa
       payment_reference: cleanNullable(values.payment_reference),
       updated_by: profileId,
     })
-    .eq('id', id)
+    .eq('id', invoice.id)
   if (error) throw error
-  await addInvoiceHistory(id, status === 'payee' ? 'paiement_complet' : 'paiement_partiel', `${Number(values.amount).toLocaleString('fr-FR')} Ar paye`, profileId)
+  await addInvoiceHistory(invoice.id, status === 'payee' ? 'paiement_execute_complet' : 'paiement_execute_partiel', `${Number(values.amount).toLocaleString('fr-FR')} Ar execute`, profileId)
 }
+
+async function getInvoicePayment(paymentId: string) {
+  const { data, error } = await supabase.schema('stock')
+    .from('invoice_payments')
+    .select('*, invoices(*, suppliers(*))')
+    .eq('id', paymentId)
+    .single()
+  if (error) throw error
+  return data as {
+    id: string
+    invoice_id: string
+    amount: number
+    status: string | null
+    invoices?: Invoice
+  }
+}
+
 
 function addDays(days: number) {
   const date = new Date()

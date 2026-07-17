@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { closeCashPurchase, getCashPurchase, giveCash, justifyDifference, refuseCashPurchase, saveCashPurchaseReturn, uploadCashPurchaseReceipt, validateCashPurchase, validateDifference } from '../../api/modules/cashPurchases.api'
 import { useAuth } from '../../hooks/useAuth'
-import { canEnterCashReturn, canGiveCash, canValidateCashPurchases, cashPurchaseSourceLabels, cashPurchaseStatusLabels, differenceTypeLabels } from '../../lib/cashPurchases'
+import { canEnterCashReturn, canGiveCash, canValidateCashPurchases, cashPurchaseSourceLabels, cashPurchaseStatusLabels, cashReceptionStatusLabels, cashStockEntryStatusLabels, cashWorkflowStatusLabels, differenceTypeLabels } from '../../lib/cashPurchases'
 import type { CashPurchase, CashPurchaseItem } from '../../lib/cashPurchases'
 
 export function CashPurchaseDetail() {
@@ -108,6 +108,19 @@ export function CashPurchaseDetail() {
     setItems((current) => current.map((item) => item.id === itemId ? { ...item, ...patch } : item))
   }
 
+  const computeReturnPatch = (item: CashPurchaseItem, patch: Partial<CashPurchaseItem>) => {
+    const next = { ...item, ...patch }
+    const factor = Number(next.conversion_factor ?? 1)
+    const quantityBought = Number(next.quantity_bought ?? 0)
+    const unitPriceReal = Number(next.unit_price_real ?? 0)
+
+    return {
+      ...patch,
+      quantity_bought_stock: quantityBought * factor,
+      unit_price_real_stock: factor > 0 ? unitPriceReal / factor : unitPriceReal,
+    }
+  }
+
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -120,6 +133,16 @@ export function CashPurchaseDetail() {
         <Info label="Montant demande" value={`${Number(purchase.amount_requested).toLocaleString('fr-FR')} Ar`} />
         <Info label="Especes remises" value={`${Number(purchase.amount_given).toLocaleString('fr-FR')} Ar`} />
         <Info label="Ecart de monnaie" value={`${Number(purchase.difference).toLocaleString('fr-FR')} Ar`} />
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-3">
+        <WorkflowInfo label="Suivi caisse" value={cashWorkflowStatusLabels[purchase.cash_status ?? 'especes_demandees']} tone={purchase.cash_status === 'rendu_monnaie_a_suivre' || purchase.cash_status === 'ecart_a_valider' ? 'warning' : 'normal'} />
+        <WorkflowInfo label="Suivi reception" value={cashReceptionStatusLabels[purchase.reception_status ?? 'en_attente_reception']} tone={purchase.reception_status === 'reception_avec_anomalie' || purchase.reception_status === 'reception_refusee' ? 'warning' : 'normal'} />
+        <WorkflowInfo label="Suivi stock" value={cashStockEntryStatusLabels[purchase.stock_entry_status ?? 'non_entre_stock']} tone={purchase.stock_entry_status === 'bloque_stock' ? 'warning' : 'normal'} />
+      </section>
+
+      <section className="rounded-md border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+        La caisse, la reception et le stock avancent separement. Un ecart de monnaie reste a regulariser dans ce dossier, mais il ne bloque pas la reception des marchandises si le retour d'achat et le justificatif sont renseignes.
       </section>
 
       <section className="surface p-5">
@@ -143,18 +166,24 @@ export function CashPurchaseDetail() {
       )}
 
       <section className="surface overflow-hidden">
-        <div className="hidden grid-cols-[1fr_100px_130px_100px_130px_130px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
-          <span>Article</span><span>Quantite prevue</span><span>Prix unitaire estime</span><span>Quantite achetee</span><span>Prix reel saisi</span><span>Total achat reel</span>
+        <div className="hidden grid-cols-[1fr_100px_120px_100px_120px_120px_140px_140px_150px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
+          <span>Article</span><span>Quantite prevue</span><span>Prix estime</span><span>Quantite achetee</span><span>Prix reel</span><span>Total reel</span><span>Fournisseur reel</span><span>Facture/recu</span><span>Date facture</span>
         </div>
         <div className="divide-y divide-slate-200">
           {items.map((item) => (
-            <div key={item.id} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_100px_130px_100px_130px_130px] xl:items-center">
+            <div key={item.id} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_100px_120px_100px_120px_120px_140px_140px_150px] xl:items-center">
               <span className="font-semibold">{item.articles?.name}</span>
               <span>{Number(item.quantity_planned).toLocaleString('fr-FR')} {item.units?.abbreviation}</span>
               <span>{Number(item.unit_price_estimated).toLocaleString('fr-FR')} Ar</span>
-              <input disabled={!canReturn || purchase.status !== 'especes_remises'} value={Number(item.quantity_bought ?? 0)} onChange={(event) => updateItem(item.id, { quantity_bought: Number(event.target.value) })} type="number" className="input" />
-              <input disabled={!canReturn || purchase.status !== 'especes_remises'} value={Number(item.unit_price_real ?? 0)} onChange={(event) => updateItem(item.id, { unit_price_real: Number(event.target.value) })} type="number" className="input" />
+              <input disabled={!canReturn || purchase.status !== 'especes_remises'} value={Number(item.quantity_bought ?? 0)} onChange={(event) => updateItem(item.id, computeReturnPatch(item, { quantity_bought: Number(event.target.value) }))} type="number" className="input" />
+              <input disabled={!canReturn || purchase.status !== 'especes_remises'} value={Number(item.unit_price_real ?? 0)} onChange={(event) => updateItem(item.id, computeReturnPatch(item, { unit_price_real: Number(event.target.value) }))} type="number" className="input" />
               <span>{(Number(item.quantity_bought ?? 0) * Number(item.unit_price_real ?? 0)).toLocaleString('fr-FR')} Ar</span>
+              <input disabled={!canReturn || purchase.status !== 'especes_remises'} value={item.supplier ?? ''} onChange={(event) => updateItem(item.id, { supplier: event.target.value })} className="input" placeholder="Fournisseur" />
+              <input disabled={!canReturn || purchase.status !== 'especes_remises'} value={item.invoice_number ?? ''} onChange={(event) => updateItem(item.id, { invoice_number: event.target.value })} className="input" placeholder="Facture/recu" />
+              <input disabled={!canReturn || purchase.status !== 'especes_remises'} value={item.invoice_date ?? ''} onChange={(event) => updateItem(item.id, { invoice_date: event.target.value })} type="date" className="input" />
+              <p className="rounded-md bg-blue-50 px-3 py-2 text-xs font-semibold text-[#1E3A8A] xl:col-span-9">
+                Entree stock prevue : {Number(item.quantity_bought_stock ?? item.quantity_bought ?? 0).toLocaleString('fr-FR')} {item.stock_unit?.abbreviation ?? item.articles?.units?.abbreviation ?? ''} - Prix stock : {Number(item.unit_price_real_stock ?? item.unit_price_real ?? 0).toLocaleString('fr-FR')} Ar
+              </p>
             </div>
           ))}
         </div>
@@ -234,4 +263,13 @@ export function CashPurchaseDetail() {
 
 function Info({ label, value }: { label: string; value: string }) {
   return <div className="surface p-5"><p className="text-sm text-slate-500">{label}</p><p className="mt-1 font-bold text-slate-950">{value}</p></div>
+}
+
+function WorkflowInfo({ label, value, tone }: { label: string; value: string; tone: 'normal' | 'warning' }) {
+  return (
+    <div className={`rounded-md border p-5 ${tone === 'warning' ? 'border-amber-200 bg-amber-50' : 'border-blue-100 bg-blue-50'}`}>
+      <p className={`text-sm font-semibold ${tone === 'warning' ? 'text-amber-800' : 'text-[#1E3A8A]'}`}>{label}</p>
+      <p className="mt-1 font-black text-slate-950">{value}</p>
+    </div>
+  )
 }

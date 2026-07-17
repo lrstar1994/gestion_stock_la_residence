@@ -36,7 +36,11 @@ export type PurchaseOrderItem = {
   quantity_received: number
   quantity_remaining?: number
   unit_id: string
+  stock_unit_id?: string | null
+  conversion_factor?: number | null
+  quantity_ordered_stock?: number | null
   unit_price: number
+  unit_price_stock?: number | null
   total?: number
   comment?: string | null
   difference_type?: OrderDifferenceType | null
@@ -44,8 +48,9 @@ export type PurchaseOrderItem = {
   difference_status?: OrderDifferenceStatus
   difference_validated_by?: string | null
   difference_validated_at?: string | null
-  articles?: Pick<Article, 'id' | 'name' | 'unit_id'> & { families?: { id: string; name: string } }
+  articles?: Pick<Article, 'id' | 'name' | 'unit_id'> & { families?: { id: string; name: string }; units?: Pick<Unit, 'id' | 'name' | 'abbreviation'> }
   units?: Pick<Unit, 'id' | 'name' | 'abbreviation'>
+  stock_unit?: Pick<Unit, 'id' | 'name' | 'abbreviation'>
 }
 
 export type PurchaseOrderNeedLink = {
@@ -119,7 +124,11 @@ export const purchaseOrderItemSchema = z.object({
   article_id: z.string().min(1, 'Article obligatoire'),
   quantity_ordered: z.number().positive('La quantite doit etre superieure a 0'),
   unit_id: z.string().min(1, "L'unite est obligatoire"),
+  stock_unit_id: z.string().optional(),
+  conversion_factor: z.number().positive('Le facteur de conversion doit etre superieur a 0').optional(),
+  quantity_ordered_stock: z.number().min(0).optional(),
   unit_price: z.number().min(0, 'Le prix ne peut pas etre negatif'),
+  unit_price_stock: z.number().min(0).optional(),
   comment: z.string().optional(),
 })
 

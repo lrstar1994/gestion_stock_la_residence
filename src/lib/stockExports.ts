@@ -27,6 +27,8 @@ export function exportStockToExcel(rows: StockRow[]) {
     'Stock minimum': row.articles?.min_stock,
     'Dernier prix': Number(row.last_price ?? 0),
     'Prix moyen': Number(row.average_price ?? 0),
+    'Valeur stock': Number(row.stock_value ?? (Number(row.total_quantity ?? 0) * Number(row.average_price ?? 0))),
+    'Derniere entree': row.last_entry_date ?? '',
     Localisations: row.locations?.map((location) => `${location.location_name}: ${location.quantity}`).join(' | '),
   })))
   const workbook = XLSX.utils.book_new()
@@ -79,10 +81,13 @@ export function exportPriceHistoryToCsv(rows: PriceHistoryRow[]) {
     Reference: row.movement_reference,
     Quantite: Number(row.quantity ?? 0),
     Prix: Number(row.unit_cost ?? 0),
+    'Total valorise': Number(row.total_cost ?? (Number(row.quantity ?? 0) * Number(row.unit_cost ?? 0))),
     Source: priceSourceLabels[row.price_source],
+    Methode: row.effective_cost_method ?? '',
+    'Source cout': row.effective_cost_source ?? '',
     Lien: row.reference_type ?? '',
   }))
-  const headers = Object.keys(data[0] ?? { Date: '', Reference: '', Quantite: '', Prix: '', Source: '', Lien: '' })
+  const headers = Object.keys(data[0] ?? { Date: '', Reference: '', Quantite: '', Prix: '', 'Total valorise': '', Source: '', Methode: '', 'Source cout': '', Lien: '' })
   const csv = [headers.map(csvEscape).join(';'), ...data.map((row) => headers.map((header) => csvEscape(row[header as keyof typeof row])).join(';'))].join('\n')
   downloadBlob(`\uFEFF${csv}`, `historique-prix-${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8')
 }

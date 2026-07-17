@@ -11,6 +11,7 @@ import { calculateOrderTotal, groupLabel } from '../../lib/purchaseOrders'
 import type { PurchaseOrderFormValues } from '../../lib/purchaseOrders'
 import type { PurchaseGroup } from '../../lib/purchaseNeeds'
 import type { Supplier } from '../../lib/suppliers'
+import { getUnitConversionFactor } from '../../lib/unitConversions'
 
 const today = new Date().toISOString().slice(0, 10)
 
@@ -77,7 +78,11 @@ export function PurchaseOrderFormPage() {
           article_id: item.article_id,
           quantity_ordered: Number(item.quantity_ordered ?? 0),
           unit_id: item.unit_id,
+          stock_unit_id: item.stock_unit_id ?? item.articles?.unit_id ?? item.unit_id,
+          conversion_factor: Number(item.conversion_factor ?? 1),
+          quantity_ordered_stock: Number(item.quantity_ordered_stock ?? item.quantity_ordered ?? 0),
           unit_price: Number(item.unit_price ?? 0),
+          unit_price_stock: Number(item.unit_price_stock ?? item.unit_price ?? 0),
           comment: item.comment ?? '',
         })) ?? [],
       })
@@ -95,7 +100,11 @@ export function PurchaseOrderFormPage() {
             article_id: need.article_id,
             quantity_ordered: Number(need.quantity ?? need.quantity_needed ?? 0),
             unit_id: need.unit_id,
+            stock_unit_id: articlesResult.articles.find((article) => article.id === need.article_id)?.unit_id ?? need.unit_id,
+            conversion_factor: 1,
+            quantity_ordered_stock: Number(need.quantity ?? need.quantity_needed ?? 0),
             unit_price: Number(need.estimated_price ?? 0),
+            unit_price_stock: Number(need.estimated_price ?? 0),
             comment: need.comment ?? '',
           })),
         }))
@@ -160,12 +169,16 @@ export function PurchaseOrderFormPage() {
       supplier_id: group.supplier_id ?? current.supplier_id,
       need_ids: needs.map((need) => need.id),
       items: needs.map((need) => ({
-        article_id: need.article_id,
-        quantity_ordered: Number(need.quantity ?? need.quantity_needed ?? 0),
-        unit_id: need.unit_id,
-        unit_price: Number(need.estimated_price ?? 0),
-        comment: need.comment ?? '',
-      })),
+          article_id: need.article_id,
+          quantity_ordered: Number(need.quantity ?? need.quantity_needed ?? 0),
+          unit_id: need.unit_id,
+          stock_unit_id: articles.find((article) => article.id === need.article_id)?.unit_id ?? need.unit_id,
+          conversion_factor: 1,
+          quantity_ordered_stock: Number(need.quantity ?? need.quantity_needed ?? 0),
+          unit_price: Number(need.estimated_price ?? 0),
+          unit_price_stock: Number(need.estimated_price ?? 0),
+          comment: need.comment ?? '',
+        })),
     }))
   }
 
@@ -177,7 +190,11 @@ export function PurchaseOrderFormPage() {
         article_id: article?.id ?? '',
         quantity_ordered: 1,
         unit_id: article?.unit_id ?? '',
+        stock_unit_id: article?.unit_id ?? '',
+        conversion_factor: 1,
+        quantity_ordered_stock: 1,
         unit_price: 0,
+        unit_price_stock: 0,
         comment: '',
       }],
     }))
@@ -192,7 +209,26 @@ export function PurchaseOrderFormPage() {
 
   const changeArticle = (index: number, articleId: string) => {
     const article = articles.find((item) => item.id === articleId)
-    updateItem(index, { article_id: articleId, unit_id: article?.unit_id ?? '' })
+    updateItem(index, computeConversionPatch({ ...values.items[index], article_id: articleId, unit_id: article?.unit_id ?? '', stock_unit_id: article?.unit_id ?? '', conversion_factor: 1 }))
+  }
+
+  const computeConversionPatch = (item: PurchaseOrderFormValues['items'][number], patch: Partial<PurchaseOrderFormValues['items'][number]> = {}) => {
+    const next = { ...item, ...patch }
+    const article = articles.find((row) => row.id === next.article_id)
+    const purchaseUnit = units.find((unit) => unit.id === next.unit_id)
+    const stockUnit = units.find((unit) => unit.id === (article?.unit_id ?? next.stock_unit_id ?? next.unit_id))
+    const autoFactor = getUnitConversionFactor(purchaseUnit, stockUnit)
+    const factor = Number(next.conversion_factor ?? autoFactor ?? 1)
+    const quantity = Number(next.quantity_ordered ?? 0)
+    const unitPrice = Number(next.unit_price ?? 0)
+
+    return {
+      ...patch,
+      stock_unit_id: article?.unit_id ?? next.stock_unit_id ?? next.unit_id,
+      conversion_factor: factor,
+      quantity_ordered_stock: quantity * factor,
+      unit_price_stock: factor > 0 ? unitPrice / factor : unitPrice,
+    }
   }
 
   const removeItem = (index: number) => {
@@ -274,13 +310,17 @@ export function PurchaseOrderFormPage() {
           {values.items.map((item, index) => {
             const selectedArticle = articles.find((article) => article.id === item.article_id)
             return (
-              <div key={`${item.article_id}-${index}`} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_150px_150px_170px_160px_44px] xl:items-end">
+              <div key={`${item.article_id}-${index}`} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_140px_140px_150px_130px_150px_44px] xl:items-end">
                 <label className="block"><span className="field-label">Article</span><select value={item.article_id} onChange={(event) => changeArticle(index, event.target.value)} className="input mt-2"><option value="">Article</option>{articles.map((article) => <option key={article.id} value={article.id}>{article.name}</option>)}</select></label>
-                <label className="block"><span className="field-label">Quantite commandee</span><input type="number" value={item.quantity_ordered} onChange={(event) => updateItem(index, { quantity_ordered: Number(event.target.value) })} className="input mt-2" /></label>
-                <label className="block"><span className="field-label">Unite d'achat</span><select value={item.unit_id} onChange={(event) => updateItem(index, { unit_id: event.target.value })} className="input mt-2"><option value="">Unite</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.abbreviation}</option>)}</select>{selectedArticle?.units?.abbreviation && <p className="mt-1 text-xs text-slate-500">Unite stock : {selectedArticle.units.abbreviation}</p>}</label>
-                <label className="block"><span className="field-label">Prix unitaire prevu</span><input type="number" value={item.unit_price} onChange={(event) => updateItem(index, { unit_price: Number(event.target.value) })} className="input mt-2" /></label>
+                <label className="block"><span className="field-label">Quantite achat</span><input type="number" value={item.quantity_ordered} onChange={(event) => updateItem(index, computeConversionPatch(item, { quantity_ordered: Number(event.target.value) }))} className="input mt-2" /></label>
+                <label className="block"><span className="field-label">Unite achat</span><select value={item.unit_id} onChange={(event) => updateItem(index, computeConversionPatch(item, { unit_id: event.target.value, conversion_factor: undefined }))} className="input mt-2"><option value="">Unite</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.abbreviation}</option>)}</select>{selectedArticle?.units?.abbreviation && <p className="mt-1 text-xs text-slate-500">Unite stock : {selectedArticle.units.abbreviation}</p>}</label>
+                <label className="block"><span className="field-label">Prix unite achat</span><input type="number" value={item.unit_price} onChange={(event) => updateItem(index, computeConversionPatch(item, { unit_price: Number(event.target.value) }))} className="input mt-2" /></label>
+                <label className="block"><span className="field-label">Facteur</span><input type="number" min="0" step="0.0001" value={item.conversion_factor ?? 1} onChange={(event) => updateItem(index, computeConversionPatch(item, { conversion_factor: Number(event.target.value) }))} className="input mt-2" /></label>
                 <div><span className="field-label">Total ligne prevu</span><p className="mt-2 font-bold">{(Number(item.quantity_ordered) * Number(item.unit_price)).toLocaleString('fr-FR')} Ar</p></div>
                 <button type="button" onClick={() => removeItem(index)} className="btn-secondary text-red-700"><Trash2 className="h-4 w-4" /></button>
+                <p className="rounded-md bg-blue-50 px-3 py-2 text-xs font-semibold text-[#1E3A8A] xl:col-span-7">
+                  Stock prevu : {Number(item.quantity_ordered_stock ?? item.quantity_ordered).toLocaleString('fr-FR')} {selectedArticle?.units?.abbreviation ?? ''} - Prix stock : {Number(item.unit_price_stock ?? item.unit_price).toLocaleString('fr-FR')} Ar / {selectedArticle?.units?.abbreviation ?? ''}
+                </p>
               </div>
             )
           })}

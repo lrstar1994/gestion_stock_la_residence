@@ -23,6 +23,7 @@ export function StockArticleDetailPage() {
     return {
       last: Number(detail?.stock?.last_price ?? 0),
       avg: Number(detail?.stock?.average_price ?? 0),
+      value: Number(detail?.stock?.stock_value ?? (Number(detail?.stock?.total_quantity ?? 0) * Number(detail?.stock?.average_price ?? 0))),
       min: prices.length ? Math.min(...prices) : 0,
       max: prices.length ? Math.max(...prices) : 0,
     }
@@ -50,11 +51,12 @@ export function StockArticleDetailPage() {
         </div>
       </header>
 
-      <section className="grid gap-4 md:grid-cols-5">
+      <section className="grid gap-4 md:grid-cols-6">
         <Metric label="Quantite totale" value={`${Number(stock?.total_quantity ?? 0).toLocaleString('fr-FR')} ${article?.units?.abbreviation ?? ''}`} />
         <Metric label="Seuil minimum" value={Number(article?.min_stock ?? 0).toLocaleString('fr-FR')} />
         <Metric label="Dernier prix" value={`${stats.last.toLocaleString('fr-FR')} Ar`} />
         <Metric label="Prix moyen pondere" value={`${stats.avg.toLocaleString('fr-FR')} Ar`} />
+        <Metric label="Valeur stock" value={`${stats.value.toLocaleString('fr-FR')} Ar`} />
         <div className="surface p-5">
           <p className="text-sm text-slate-500">Statut</p>
           <div className="mt-2"><StockBadge status={status} /></div>
@@ -68,6 +70,7 @@ export function StockArticleDetailPage() {
             <div key={location.location_id} className="rounded-md border border-slate-200 p-4">
               <p className="font-semibold text-slate-950">{location.location_name}</p>
               <p className="mt-1 text-sm text-slate-600">{Number(location.quantity).toLocaleString('fr-FR')} {article?.units?.abbreviation}</p>
+              <p className="mt-1 text-xs font-semibold text-[#1E3A8A]">{Number(location.stock_value ?? 0).toLocaleString('fr-FR')} Ar</p>
             </div>
           ))}
           {(stock?.locations?.length ?? 0) === 0 && <p className="text-sm text-slate-600">Aucune localisation alimentee.</p>}
@@ -99,11 +102,12 @@ export function StockArticleDetailPage() {
         </div>
         <div className="divide-y divide-slate-200">
           {detail.priceHistory.slice(0, 10).map((row) => (
-            <div key={row.id} className="grid gap-3 px-5 py-4 md:grid-cols-[130px_1fr_120px_120px] md:items-center">
+            <div key={row.id} className="grid gap-3 px-5 py-4 md:grid-cols-[130px_1fr_120px_120px_140px] md:items-center">
               <span>{new Date(row.movement_date).toLocaleDateString('fr-FR')}</span>
               <span>{row.movement_reference}</span>
               <span>{Number(row.unit_cost).toLocaleString('fr-FR')} Ar</span>
               <span>{priceSourceLabels[row.price_source]}</span>
+              <span>{Number(row.total_cost ?? 0).toLocaleString('fr-FR')} Ar total</span>
             </div>
           ))}
           {detail.priceHistory.length === 0 && <p className="p-5 text-sm text-slate-600">Aucun prix en historique.</p>}

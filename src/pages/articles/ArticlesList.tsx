@@ -14,7 +14,7 @@ const statusClasses: Record<ArticleStatus, string> = {
 }
 
 const articleGridClass =
-  'grid min-w-[1240px] grid-cols-[1.3fr_1fr_110px_1.1fr_110px_130px_130px_140px] items-center gap-4'
+  'grid min-w-[1380px] grid-cols-[1.3fr_1fr_110px_1.1fr_110px_130px_130px_140px_140px] items-center gap-4'
 
 export function ArticlesList() {
   const { profile } = useAuth()
@@ -111,13 +111,14 @@ export function ArticlesList() {
             <span>Stock min.</span>
             <span>Statut</span>
             <span>Vente directe</span>
+            <span>Fiche technique</span>
             <span>Actions</span>
           </div>
 
           {loading ? (
-            <p className="min-w-[1240px] p-6 text-sm text-slate-600">Chargement...</p>
+            <p className="min-w-[1380px] p-6 text-sm text-slate-600">Chargement...</p>
           ) : articles.length === 0 ? (
-            <p className="min-w-[1240px] p-6 text-sm text-slate-600">Aucun article trouve.</p>
+            <p className="min-w-[1380px] p-6 text-sm text-slate-600">Aucun article trouve.</p>
           ) : (
             <div className="divide-y divide-slate-200">
               {articles.map((article) => (
@@ -135,6 +136,9 @@ export function ArticlesList() {
                   </span>
                   <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ring-1 ${article.sellable_without_transformation ? 'bg-amber-50 text-amber-800 ring-amber-200' : 'bg-slate-100 text-slate-600 ring-slate-200'}`}>
                     {article.sellable_without_transformation ? 'Oui' : 'Non'}
+                  </span>
+                  <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ring-1 ${article.usable_in_recipes ? 'bg-blue-50 text-blue-800 ring-blue-200' : 'bg-slate-100 text-slate-600 ring-slate-200'}`}>
+                    {article.usable_in_recipes ? 'Oui' : 'Non'}
                   </span>
                   <div className="flex gap-2">
                     <Link to={`/articles/${article.id}`} className="btn-secondary px-3 py-2" aria-label="Voir">

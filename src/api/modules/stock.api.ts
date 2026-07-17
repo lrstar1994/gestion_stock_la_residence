@@ -55,7 +55,7 @@ export async function listStock(filters: StockFilters = {}) {
   const locationsById = new Map((locationRefs ?? []).map((location) => [location.id, location]))
 
   let rows = stockRows.map((row) => {
-    const locationMap = new Map<string, { location_id: string; location_name: string; quantity: number }>()
+    const locationMap = new Map<string, { location_id: string; location_name: string; quantity: number; stock_value: number }>()
     ;(locationsData ?? [])
       .filter((locationRow) => locationRow.article_id === row.article_id && Number(locationRow.quantity ?? 0) !== 0)
       .forEach((locationRow) => {
@@ -65,6 +65,7 @@ export async function listStock(filters: StockFilters = {}) {
           location_id: key,
           location_name: locationsById.get(key)?.name ?? '',
           quantity: Number(current?.quantity ?? 0) + Number(locationRow.quantity ?? 0),
+          stock_value: Number(current?.stock_value ?? 0) + Number(locationRow.stock_value ?? 0),
         })
       })
 
@@ -287,6 +288,26 @@ export async function integratePendingReceptionMovements(profileId: string) {
       .update({ status: 'entree_stock', updated_by: profileId })
       .eq('id', receptionId)
       .in('status', ['validee', 'validee_avec_anomalies'])
+  }
+  if (integratedReceptionIds.size > 0) {
+    const { data: receptions, error: receptionError } = await supabase.schema('stock')
+      .from('receptions')
+      .select('cash_purchase_id')
+      .in('id', Array.from(integratedReceptionIds))
+      .not('cash_purchase_id', 'is', null)
+    if (receptionError) throw receptionError
+
+    const cashPurchaseIds = Array.from(new Set((receptions ?? []).map((reception) => reception.cash_purchase_id).filter(Boolean))) as string[]
+    for (const cashPurchaseId of cashPurchaseIds) {
+      const { error: workflowError } = await supabase.schema('stock').rpc('update_cash_purchase_workflow_status', {
+        p_cash_purchase_id: cashPurchaseId,
+        p_cash_status: null,
+        p_reception_status: null,
+        p_stock_entry_status: 'entree_stock_faite',
+        p_profile_id: profileId,
+      })
+      if (workflowError) throw workflowError
+    }
   }
   return count
 }

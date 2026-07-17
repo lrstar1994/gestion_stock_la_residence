@@ -35,6 +35,7 @@ export function ArticleFormPage() {
       default_supplier: '',
       min_stock: 0,
       sellable_without_transformation: false,
+      usable_in_recipes: false,
       status: 'active',
       location_ids: [],
     },
@@ -77,6 +78,7 @@ export function ArticleFormPage() {
           default_supplier: article.default_supplier ?? '',
           min_stock: Number(article.min_stock ?? 0),
           sellable_without_transformation: Boolean(article.sellable_without_transformation),
+          usable_in_recipes: Boolean(article.usable_in_recipes),
           status: article.status,
           location_ids: article.article_locations?.map((item) => item.locations.id) ?? [],
         })
@@ -173,6 +175,10 @@ export function ArticleFormPage() {
           <label className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-700">
             <input type="checkbox" {...form.register('sellable_without_transformation')} className="h-4 w-4 rounded border-slate-300 text-[#1E3A8A]" />
             A vendre sans transformation
+          </label>
+          <label className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-700">
+            <input type="checkbox" {...form.register('usable_in_recipes')} className="h-4 w-4 rounded border-slate-300 text-[#1E3A8A]" />
+            Utilisable en fiche technique
           </label>
           <Field label="Statut">
             <select {...form.register('status')} className="input mt-2">

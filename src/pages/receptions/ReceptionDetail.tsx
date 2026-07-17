@@ -142,10 +142,10 @@ export function ReceptionDetail() {
       <section className="surface p-5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="eyebrow">Lecture fiscale / cout matiere</p>
+            <p className="eyebrow">Lecture fiscale / valeur stock</p>
             <h2 className="mt-1 text-lg font-bold text-slate-950">Resume de valorisation</h2>
             <p className="mt-1 text-sm text-slate-600">
-              Le prix reel correspond au prix saisi a la reception. Le cout interne est le cout utilise pour valoriser le stock apres TVA, charges ou cout manuel.
+              Le prix reel correspond au prix saisi a la reception. La valeur d'entree stock est la valeur utilisee pour valoriser le stock apres TVA, charges ou cout manuel.
             </p>
           </div>
           <span className="w-fit rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[#1E3A8A]">
@@ -160,7 +160,7 @@ export function ReceptionDetail() {
           <InfoFlat label="TVA recuperable" value={formatMoney(fiscalSummary.recoverableVat)} />
           <InfoFlat label="TVA non recuperable" value={formatMoney(fiscalSummary.nonRecoverableVat)} />
           <InfoFlat label="Charge declarative" value={formatMoney(fiscalSummary.declaredExtraTax)} />
-          <InfoFlat label="Cout matiere interne" value={formatMoney(fiscalSummary.effectiveMaterialCost || reception.total_amount)} />
+          <InfoFlat label="Valeur d'entree stock" value={formatMoney(fiscalSummary.effectiveMaterialCost || reception.total_amount)} />
         </div>
         {firstItem?.effective_cost_method && (
           <p className="mt-4 text-sm text-slate-600">
@@ -215,7 +215,7 @@ export function ReceptionDetail() {
             <span>Ecart prix</span>
             <span>Total prevu</span>
             <span>Total recu saisi</span>
-            <span>Cout interne stock</span>
+            <span>Valeur entree stock</span>
             <span>Methode cout</span>
             <span>Statut</span>
           </div>

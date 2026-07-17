@@ -18,6 +18,7 @@ type ArticleFilters = {
   familyId?: string
   status?: ArticleStatus | 'all'
   sellableWithoutTransformation?: boolean
+  usableInRecipes?: boolean
   page?: number
   pageSize?: number
 }
@@ -349,6 +350,10 @@ export async function listArticles(filters: ArticleFilters = {}) {
     query = query.eq('sellable_without_transformation', filters.sellableWithoutTransformation)
   }
 
+  if (typeof filters.usableInRecipes === 'boolean') {
+    query = query.eq('usable_in_recipes', filters.usableInRecipes)
+  }
+
   if (filters.search?.trim()) {
     const term = filters.search.trim()
     const { data: matchingFamilies, error: familySearchError } = await supabase.schema('stock')
@@ -403,6 +408,7 @@ export async function createArticle(values: ArticleFormValues, profileId?: strin
       default_supplier: cleanNullable(values.default_supplier),
       min_stock: values.min_stock,
       sellable_without_transformation: values.sellable_without_transformation,
+      usable_in_recipes: values.usable_in_recipes,
       status: values.status,
       created_by: profileId,
       updated_by: profileId,
@@ -430,6 +436,7 @@ export async function updateArticle(id: string, values: ArticleFormValues, profi
       default_supplier: cleanNullable(values.default_supplier),
       min_stock: values.min_stock,
       sellable_without_transformation: values.sellable_without_transformation,
+      usable_in_recipes: values.usable_in_recipes,
       status: values.status,
       updated_by: profileId,
     })

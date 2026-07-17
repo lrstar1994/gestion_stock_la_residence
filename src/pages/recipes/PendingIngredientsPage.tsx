@@ -21,6 +21,7 @@ export function PendingIngredientsPage() {
   const [units, setUnits] = useState<Unit[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [selection, setSelection] = useState<Record<string, string>>({})
+  const [conversionFactors, setConversionFactors] = useState<Record<string, number>>({})
   const [search, setSearch] = useState('')
   const [creatingFor, setCreatingFor] = useState<PendingIngredient | null>(null)
   const [articleDraft, setArticleDraft] = useState<ArticleDraft>({ name: '', family_id: '', unit_id: '' })
@@ -41,7 +42,7 @@ export function PendingIngredientsPage() {
   const load = async () => {
     const [pending, articleResult, loadedFamilies, loadedUnits, loadedLocations] = await Promise.all([
       listPendingIngredients(),
-      listArticles({ status: 'active', pageSize: 1000 }),
+      listArticles({ status: 'active', pageSize: 1000, usableInRecipes: true }),
       listFamilies(),
       listUnits(),
       listLocations(),
@@ -64,9 +65,13 @@ export function PendingIngredientsPage() {
       return
     }
 
-    await attachPendingIngredient(id, articleId)
-    toast.success('Ingredient rapproche')
-    await load()
+    try {
+      await attachPendingIngredient(id, articleId, { conversionFactor: conversionFactors[id] })
+      toast.success('Ingredient rapproche')
+      await load()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Conversion impossible')
+    }
   }
 
   const resolveGroup = async (item: PendingIngredient) => {
@@ -76,9 +81,13 @@ export function PendingIngredientsPage() {
       return
     }
 
-    const count = await attachPendingIngredientGroup(item.imported_name, articleId)
-    toast.success(`${count} ingredient(s) rapproches`)
-    await load()
+    try {
+      const count = await attachPendingIngredientGroup(item.imported_name, articleId, { conversionFactor: conversionFactors[item.id] })
+      toast.success(`${count} ingredient(s) rapproches`)
+      await load()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Conversion impossible')
+    }
   }
 
   const openCreateArticle = (item: PendingIngredient) => {
@@ -116,6 +125,7 @@ export function PendingIngredientsPage() {
           default_supplier: '',
           min_stock: 0,
           sellable_without_transformation: false,
+          usable_in_recipes: true,
           status: 'active',
           location_ids: [defaultLocation.id],
         },
@@ -123,10 +133,10 @@ export function PendingIngredientsPage() {
       )
 
       if (applyToGroup) {
-        const count = await attachPendingIngredientGroup(creatingFor.imported_name, articleId)
+        const count = await attachPendingIngredientGroup(creatingFor.imported_name, articleId, { conversionFactor: conversionFactors[creatingFor.id] })
         toast.success(`Article cree et ${count} ingredient(s) lies`)
       } else {
-        await attachPendingIngredient(creatingFor.id, articleId)
+        await attachPendingIngredient(creatingFor.id, articleId, { conversionFactor: conversionFactors[creatingFor.id] })
         toast.success('Article cree et ingredient lie')
       }
 
@@ -163,7 +173,7 @@ export function PendingIngredientsPage() {
       <section className="surface overflow-hidden">
         <div className="divide-y divide-slate-200">
           {filteredItems.map((item) => (
-            <article key={item.id} className="grid gap-3 p-4 xl:grid-cols-[1fr_130px_130px_150px_1.1fr_260px] xl:items-center">
+            <article key={item.id} className="grid gap-3 p-4 xl:grid-cols-[1fr_130px_130px_150px_1.1fr_150px_260px] xl:items-center">
               <div>
                 <p className="font-semibold text-slate-950">{item.imported_name}</p>
                 <p className="mt-1 text-sm text-slate-500">{item.recipes?.name}</p>
@@ -180,6 +190,18 @@ export function PendingIngredientsPage() {
                 <option value="">Choisir un article</option>
                 {articles.map((article) => <option key={article.id} value={article.id}>{article.name}</option>)}
               </select>
+              <label className="block">
+                <span className="sr-only">Facteur manuel</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.0001"
+                  value={conversionFactors[item.id] ?? item.conversion_factor ?? ''}
+                  onChange={(event) => setConversionFactors((current) => ({ ...current, [item.id]: Number(event.target.value) }))}
+                  className="input"
+                  placeholder="Facteur si besoin"
+                />
+              </label>
               <div className="flex flex-wrap gap-2">
                 <button type="button" className="btn-primary" onClick={() => resolveOne(item.id)}>Lier</button>
                 {groupedCounts[item.imported_name] > 1 && (
@@ -223,6 +245,19 @@ export function PendingIngredientsPage() {
                   <option value="">Selectionner</option>
                   {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name} ({unit.abbreviation})</option>)}
                 </select>
+              </label>
+              <label className="block">
+                <span className="field-label">Facteur manuel si unite non compatible</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.0001"
+                  value={conversionFactors[creatingFor.id] ?? creatingFor.conversion_factor ?? ''}
+                  onChange={(event) => setConversionFactors((current) => ({ ...current, [creatingFor.id]: Number(event.target.value) }))}
+                  className="input mt-2"
+                  placeholder={`Ex: 1 ${creatingFor.unit_name} = ? unite stock`}
+                />
+                <p className="mt-1 text-xs text-slate-500">A remplir seulement si la conversion automatique est impossible, par exemple piece vers kg.</p>
               </label>
             </div>
 

@@ -6,11 +6,12 @@ import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { createSupplier, deleteSupplier, listSuppliers, updateSupplier } from '../../../api/modules/suppliers.api'
 import { useAuth } from '../../../hooks/useAuth'
+import { invoiceTaxModeLabels, invoiceTaxModes, supplierTaxStatusLabels, supplierTaxStatuses } from '../../../lib/materialCosts'
 import { canManageSuppliers, supplierSchema } from '../../../lib/suppliers'
 import type { Supplier, SupplierFormValues } from '../../../lib/suppliers'
 
 const supplierGridClass =
-  'grid min-w-[1180px] grid-cols-[1.2fr_150px_130px_130px_140px_220px_1.4fr_110px] items-center gap-3'
+  'grid min-w-[1500px] grid-cols-[1.2fr_150px_130px_130px_170px_140px_170px_180px_1.2fr_110px] items-center gap-3'
 
 export function SuppliersPage() {
   const { profile } = useAuth()
@@ -29,6 +30,16 @@ export function SuppliersPage() {
       email: '',
       nif: '',
       stat: '',
+      supplier_tax_status: 'unknown',
+      is_identified: false,
+      usually_issues_vat_invoice: false,
+      default_vat_rate: 20,
+      default_vat_recoverable: true,
+      default_invoice_tax_mode: 'invoice_with_recoverable_vat',
+      is_usual_without_nif_stat: false,
+      default_declared_extra_tax_enabled: false,
+      default_declared_extra_tax_rate: 0,
+      occasional_purchase_alert_threshold: 1000000,
       address: '',
       notes: '',
     },
@@ -58,6 +69,16 @@ export function SuppliersPage() {
       email: supplier.email ?? '',
       nif: supplier.nif ?? '',
       stat: supplier.stat ?? '',
+      supplier_tax_status: supplier.supplier_tax_status ?? 'unknown',
+      is_identified: Boolean(supplier.is_identified),
+      usually_issues_vat_invoice: Boolean(supplier.usually_issues_vat_invoice),
+      default_vat_rate: Number(supplier.default_vat_rate ?? 20),
+      default_vat_recoverable: supplier.default_vat_recoverable ?? true,
+      default_invoice_tax_mode: supplier.default_invoice_tax_mode ?? 'invoice_with_recoverable_vat',
+      is_usual_without_nif_stat: Boolean(supplier.is_usual_without_nif_stat),
+      default_declared_extra_tax_enabled: Boolean(supplier.default_declared_extra_tax_enabled),
+      default_declared_extra_tax_rate: Number(supplier.default_declared_extra_tax_rate ?? 0),
+      occasional_purchase_alert_threshold: Number(supplier.occasional_purchase_alert_threshold ?? 1000000),
       address: supplier.address ?? '',
       notes: supplier.notes ?? '',
     })
@@ -72,6 +93,16 @@ export function SuppliersPage() {
       email: '',
       nif: '',
       stat: '',
+      supplier_tax_status: 'unknown',
+      is_identified: false,
+      usually_issues_vat_invoice: false,
+      default_vat_rate: 20,
+      default_vat_recoverable: true,
+      default_invoice_tax_mode: 'invoice_with_recoverable_vat',
+      is_usual_without_nif_stat: false,
+      default_declared_extra_tax_enabled: false,
+      default_declared_extra_tax_rate: 0,
+      occasional_purchase_alert_threshold: 1000000,
       address: '',
       notes: '',
     })
@@ -155,6 +186,53 @@ export function SuppliersPage() {
                   <input {...form.register('stat')} className="input mt-2" />
                 </Field>
               </div>
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                <p className="font-bold text-slate-950">Profil fiscal habituel</p>
+                <p className="mt-1 text-sm text-slate-600">Ces valeurs servent de proposition par defaut. Le justificatif reel reste verifie dans l'achat, la reception ou la facture.</p>
+                <div className="mt-4 grid gap-4">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <input type="checkbox" {...form.register('is_identified')} className="h-4 w-4" />
+                    Fournisseur identifie
+                  </label>
+                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <input type="checkbox" {...form.register('usually_issues_vat_invoice')} className="h-4 w-4" />
+                    Emet habituellement des factures avec TVA
+                  </label>
+                  <Field label="Statut fiscal habituel">
+                    <select {...form.register('supplier_tax_status')} className="input mt-2">
+                      {supplierTaxStatuses.map((status) => <option key={status} value={status}>{supplierTaxStatusLabels[status]}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Mode fiscal propose">
+                    <select {...form.register('default_invoice_tax_mode')} className="input mt-2">
+                      {invoiceTaxModes.map((mode) => <option key={mode} value={mode}>{invoiceTaxModeLabels[mode]}</option>)}
+                    </select>
+                  </Field>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="Taux TVA habituel">
+                      <input type="number" step="0.01" {...form.register('default_vat_rate', { valueAsNumber: true })} className="input mt-2" />
+                    </Field>
+                    <Field label="Charge declarative par defaut %">
+                      <input type="number" step="0.01" {...form.register('default_declared_extra_tax_rate', { valueAsNumber: true })} className="input mt-2" />
+                    </Field>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <input type="checkbox" {...form.register('default_vat_recoverable')} className="h-4 w-4" />
+                    TVA recuperable par defaut
+                  </label>
+                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <input type="checkbox" {...form.register('is_usual_without_nif_stat')} className="h-4 w-4" />
+                    Fournisseur habituel sans NIF/STAT
+                  </label>
+                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <input type="checkbox" {...form.register('default_declared_extra_tax_enabled')} className="h-4 w-4" />
+                    Proposer une charge declarative par defaut
+                  </label>
+                  <Field label="Seuil alerte achat occasionnel sans NIF/STAT">
+                    <input type="number" {...form.register('occasional_purchase_alert_threshold', { valueAsNumber: true })} className="input mt-2" />
+                  </Field>
+                </div>
+              </div>
               <Field label="Adresse">
                 <textarea {...form.register('address')} className="input mt-2 min-h-20 resize-none" />
               </Field>
@@ -196,14 +274,16 @@ export function SuppliersPage() {
               <span>Contact</span>
               <span>NIF</span>
               <span>STAT</span>
+              <span>Profil fiscal</span>
+              <span>TVA</span>
+              <span>Charge declarative</span>
               <span>Telephone</span>
               <span>Email</span>
-              <span>Adresse</span>
               <span>Actions</span>
             </div>
 
             {loading ? (
-              <p className="min-w-[1180px] p-5 text-sm text-slate-600">Chargement...</p>
+              <p className="min-w-[1500px] p-5 text-sm text-slate-600">Chargement...</p>
             ) : (
               <div className="divide-y divide-slate-200">
                 {suppliers.map((supplier) => (
@@ -215,9 +295,11 @@ export function SuppliersPage() {
                     <p className="text-sm text-slate-700">{supplier.contact || '-'}</p>
                     <p className="text-sm text-slate-700">{supplier.nif || '-'}</p>
                     <p className="text-sm text-slate-700">{supplier.stat || '-'}</p>
+                    <p className="text-sm text-slate-700">{supplierTaxStatusLabels[supplier.supplier_tax_status ?? 'unknown']}</p>
+                    <p className="text-sm text-slate-700">{supplier.usually_issues_vat_invoice ? `${Number(supplier.default_vat_rate ?? 20).toLocaleString('fr-FR')} %` : '-'}</p>
+                    <p className="text-sm text-slate-700">{supplier.default_declared_extra_tax_enabled ? `${Number(supplier.default_declared_extra_tax_rate ?? 0).toLocaleString('fr-FR')} %` : '-'}</p>
                     <p className="text-sm text-slate-700">{supplier.phone || '-'}</p>
                     <p className="truncate text-sm text-slate-700">{supplier.email || '-'}</p>
-                    <p className="line-clamp-2 text-sm text-slate-700">{supplier.address || '-'}</p>
                     {canEdit ? (
                       <div className="flex gap-2">
                         <button type="button" onClick={() => startEdit(supplier)} className="btn-secondary px-3 py-2" aria-label="Modifier">
@@ -232,7 +314,7 @@ export function SuppliersPage() {
                     )}
                   </article>
                 ))}
-                {suppliers.length === 0 && <p className="min-w-[1180px] p-5 text-sm text-slate-600">Aucun fournisseur trouve.</p>}
+                {suppliers.length === 0 && <p className="min-w-[1500px] p-5 text-sm text-slate-600">Aucun fournisseur trouve.</p>}
               </div>
             )}
           </div>

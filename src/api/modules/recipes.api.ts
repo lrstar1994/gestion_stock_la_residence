@@ -40,6 +40,10 @@ type ParsedIngredientLine = {
   unit_price: number
 }
 
+type PendingResolutionOptions = {
+  conversionFactor?: number | null
+}
+
 function cleanNullable(value?: string) {
   const trimmed = value?.trim()
   return trimmed ? trimmed : null
@@ -311,6 +315,7 @@ export async function importRecipesFromRows(rows: ParsedImportRow[], profileId?:
     .from('articles')
     .select('id, name, unit_id, units(id, name, abbreviation)')
     .neq('status', 'archived')
+    .eq('usable_in_recipes', true)
 
   if (articlesError) throw articlesError
   const articles = (articlesData ?? []) as unknown as ImportArticleMatch[]
@@ -323,18 +328,26 @@ export async function importRecipesFromRows(rows: ParsedImportRow[], profileId?:
 
   for (const row of rows) {
     try {
+      const importRow = row as Record<string, unknown>
+      const importedRecipeName = getImportValue(importRow, ['Nom', 'Name']) || row.Nom
+      const importedRecipeType = (getImportValue(importRow, ['Type']) || row.Type) as RecipeType
+      // @ts-expect-error Ancien fallback avec en-tete Excel mal encode, conserve uniquement en secours.
+      const importedMainIngredient = (getImportValue(importRow, ['Matiere principale', 'Matière principale', 'MatiÃ¨re principale', 'Main ingredient']) || row['MatiÃ¨re principale']) as RecipeMainIngredient
+      const importedPortions = Number(getImportValue(importRow, ['Portions']) || row.Portions || 1)
+      const safeIngredientsText = getImportValue(importRow, ['Ingredients', 'Ingrédients', 'IngrÃ©dients'])
+      if (!importedRecipeName || !importedRecipeType || !importedMainIngredient) throw new Error('Ligne Excel incomplete')
       const ingredientsText = row.Ingredients || row['Ingrédients'] || ''
-      const parsedIngredients = ingredientsText
+      const parsedIngredients = (safeIngredientsText || ingredientsText)
         .split('|')
         .map((item) => parseIngredientLine(item))
         .filter((ingredient): ingredient is ParsedIngredientLine => Boolean(ingredient))
       const { data: recipe, error: recipeError } = await supabase.schema('stock')
         .from('recipes')
         .insert({
-          name: row.Nom,
-          type: row.Type,
-          main_ingredient: row['Matière principale'],
-          portions: Number(row.Portions) || 1,
+          name: importedRecipeName,
+          type: importedRecipeType,
+          main_ingredient: importedMainIngredient,
+          portions: importedPortions,
           total_cost: 0,
           cost_per_portion: 0,
           suggested_price: 0,
@@ -407,6 +420,7 @@ export async function importRecipesFromRows(rows: ParsedImportRow[], profileId?:
         }
       }
 
+      await recalculateRecipeCosts(recipe.id)
       report.recipesImported += 1
     } catch {
       report.recipesFailed += 1
@@ -427,7 +441,7 @@ export async function listPendingIngredients() {
   return (data ?? []) as PendingIngredient[]
 }
 
-export async function attachPendingIngredient(id: string, articleId: string) {
+export async function attachPendingIngredient(id: string, articleId: string, options: PendingResolutionOptions = {}) {
   const { data: pending, error: pendingError } = await supabase.schema('stock').from('pending_ingredients').select('*').eq('id', id).single()
   if (pendingError) throw pendingError
 
@@ -439,6 +453,7 @@ export async function attachPendingIngredient(id: string, articleId: string) {
     quantity: Number(pending.quantity),
     displayUnit: unit ?? stockUnit,
     stockUnit,
+    manualConversionFactor: options.conversionFactor ?? pending.conversion_factor,
   })
 
   const { error: insertError } = await supabase.schema('stock').from('recipe_ingredients').insert({
@@ -457,8 +472,9 @@ export async function attachPendingIngredient(id: string, articleId: string) {
   })
   if (insertError) throw insertError
 
-  const { error } = await supabase.schema('stock').from('pending_ingredients').update({ status: 'resolved', resolved_article_id: articleId }).eq('id', id)
+  const { error } = await supabase.schema('stock').from('pending_ingredients').update({ status: 'resolved', resolved_article_id: articleId, conversion_factor: conversion.conversionFactor }).eq('id', id)
   if (error) throw error
+  await recalculateRecipeCosts(pending.recipe_id)
 }
 
 async function findUnitByNameOrAbbreviation(unitName: string) {
@@ -544,7 +560,7 @@ function calculateTotalsFromIngredientRows(
   })
 }
 
-export async function attachPendingIngredientGroup(importedName: string, articleId: string) {
+export async function attachPendingIngredientGroup(importedName: string, articleId: string, options: PendingResolutionOptions = {}) {
   const { data, error } = await supabase.schema('stock')
     .from('pending_ingredients')
     .select('id')
@@ -554,10 +570,15 @@ export async function attachPendingIngredientGroup(importedName: string, article
   if (error) throw error
 
   for (const item of data ?? []) {
-    await attachPendingIngredient(item.id, articleId)
+    await attachPendingIngredient(item.id, articleId, options)
   }
 
   return data?.length ?? 0
+}
+
+async function recalculateRecipeCosts(recipeId: string) {
+  const { error } = await supabase.schema('stock').rpc('recalculate_recipe_costs', { recipe_uuid: recipeId })
+  if (error) throw error
 }
 
 function parseIngredientLine(line: string): ParsedIngredientLine | null {
@@ -568,6 +589,16 @@ function parseIngredientLine(line: string): ParsedIngredientLine | null {
 
 function normalize(value: string) {
   return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+}
+
+function getImportValue(row: Record<string, unknown>, candidates: string[]) {
+  const entries = Object.entries(row)
+  for (const candidate of candidates) {
+    const normalizedCandidate = normalize(candidate)
+    const match = entries.find(([key]) => normalize(key) === normalizedCandidate)
+    if (match) return String(match[1] ?? '').trim()
+  }
+  return ''
 }
 
 function findArticleMatches(importedName: string, articles: ImportArticleMatch[]) {

@@ -109,7 +109,7 @@ export async function createPurchaseNeed(values: PurchaseNeedFormValues, profile
   const tax = calculateTaxValues(values)
   const total = values.quantity * tax.estimatedPriceHt
   const origin = deriveLegacyOrigin(values)
-  const { error } = await supabase.schema('stock').from('purchase_needs').insert({
+  const { data, error } = await supabase.schema('stock').from('purchase_needs').insert({
     article_id: values.article_id,
     quantity: values.quantity,
     quantity_needed: values.quantity,
@@ -135,8 +135,11 @@ export async function createPurchaseNeed(values: PurchaseNeedFormValues, profile
     created_by: profileId,
     updated_by: profileId,
   })
+    .select('id')
+    .single()
 
   if (error) throw error
+  return data.id as string
 }
 
 export async function updatePurchaseNeed(id: string, values: PurchaseNeedFormValues, profileId?: string) {

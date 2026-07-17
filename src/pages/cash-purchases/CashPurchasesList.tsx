@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom'
 import { listCashPurchases } from '../../api/modules/cashPurchases.api'
 import { useAuth } from '../../hooks/useAuth'
 import { exportCashPurchasesToCsv, exportCashPurchasesToExcel } from '../../lib/cashPurchaseExports'
-import { canCreateCashPurchases, canExportCashPurchases, cashPurchaseSourceLabels, cashPurchaseSources, cashPurchaseStatusLabels, cashPurchaseStatuses } from '../../lib/cashPurchases'
+import { canCreateCashPurchases, canExportCashPurchases, cashPurchaseSourceLabels, cashPurchaseSources, cashPurchaseStatusLabels, cashPurchaseStatuses, cashReceptionStatusLabels, cashStockEntryStatusLabels, cashWorkflowStatusLabels } from '../../lib/cashPurchases'
 import type { CashPurchase, CashPurchaseSource, CashPurchaseStatus } from '../../lib/cashPurchases'
 
 export function CashPurchasesList() {
@@ -35,6 +35,7 @@ export function CashPurchasesList() {
   const dashboard = {
     pending: purchases.filter((item) => item.status === 'en_attente').length,
     toClose: purchases.filter((item) => item.status === 'retour_complet').length,
+    moneyToFollow: purchases.filter((item) => item.cash_status === 'rendu_monnaie_a_suivre' || item.cash_status === 'ecart_a_valider').length,
     advances: purchases.reduce((sum, item) => sum + Number(item.amount_given ?? 0), 0),
     purchased: purchases.reduce((sum, item) => sum + Number(item.total_purchased ?? 0), 0),
     difference: purchases.reduce((sum, item) => sum + Number(item.difference ?? 0), 0),
@@ -57,12 +58,13 @@ export function CashPurchasesList() {
         </div>
       </header>
 
-      <section className="grid gap-4 md:grid-cols-5">
+      <section className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
         <Metric label="En attente" value={String(dashboard.pending)} />
         <Metric label="A cloturer" value={String(dashboard.toClose)} />
+        <Metric label="Rendus a suivre" value={String(dashboard.moneyToFollow)} />
         <Metric label="Avances" value={`${dashboard.advances.toLocaleString('fr-FR')} Ar`} />
         <Metric label="Achats" value={`${dashboard.purchased.toLocaleString('fr-FR')} Ar`} />
-        <Metric label="Ecart de monnaie" value={`${dashboard.difference.toLocaleString('fr-FR')} Ar`} />
+        <Metric label="Ecart monnaie" value={`${dashboard.difference.toLocaleString('fr-FR')} Ar`} />
       </section>
 
       <section className="surface grid gap-3 p-4 md:grid-cols-[1fr_180px_220px]">
@@ -72,12 +74,12 @@ export function CashPurchasesList() {
       </section>
 
       <section className="surface overflow-hidden">
-        <div className="hidden grid-cols-[150px_130px_1fr_140px_140px_140px_140px_140px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
-          <span>Reference</span><span>Date</span><span>Acheteur / motif</span><span>Montant demande</span><span>Especes remises</span><span>Total achete</span><span>Ecart monnaie</span><span>Statut</span>
+        <div className="hidden grid-cols-[140px_110px_1fr_130px_130px_130px_130px_130px_130px_130px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
+          <span>Reference</span><span>Date</span><span>Acheteur / motif</span><span>Montant demande</span><span>Especes remises</span><span>Total achete</span><span>Ecart monnaie</span><span>Caisse</span><span>Reception</span><span>Stock</span>
         </div>
         <div className="divide-y divide-slate-200">
           {purchases.map((purchase) => (
-            <Link key={purchase.id} to={`/cash-purchases/${purchase.id}`} className="grid gap-3 px-5 py-4 transition hover:bg-slate-50 xl:grid-cols-[150px_130px_1fr_140px_140px_140px_140px_140px] xl:items-center">
+            <Link key={purchase.id} to={`/cash-purchases/${purchase.id}`} className="grid gap-3 px-5 py-4 transition hover:bg-slate-50 xl:grid-cols-[140px_110px_1fr_130px_130px_130px_130px_130px_130px_130px] xl:items-center">
               <span className="font-bold text-[#1E3A8A]">{purchase.reference}</span>
               <span className="text-sm">{new Date(purchase.request_date).toLocaleDateString('fr-FR')}</span>
               <span><span className="block font-semibold">{purchase.buyer?.full_name}</span><span className="text-xs text-slate-500">{purchase.reason}</span></span>
@@ -85,7 +87,9 @@ export function CashPurchasesList() {
               <span>{Number(purchase.amount_given).toLocaleString('fr-FR')} Ar</span>
               <span>{Number(purchase.total_purchased).toLocaleString('fr-FR')} Ar</span>
               <span className={Number(purchase.difference) > 0 ? 'font-bold text-red-700' : 'text-slate-700'}>{Number(purchase.difference).toLocaleString('fr-FR')} Ar</span>
-              <span className="w-fit rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[#1E3A8A]">{cashPurchaseStatusLabels[purchase.status]}</span>
+              <StatusBadge label={cashWorkflowStatusLabels[purchase.cash_status ?? 'especes_demandees'] ?? cashPurchaseStatusLabels[purchase.status]} tone={purchase.cash_status === 'rendu_monnaie_a_suivre' || purchase.cash_status === 'ecart_a_valider' ? 'warning' : 'normal'} />
+              <StatusBadge label={cashReceptionStatusLabels[purchase.reception_status ?? 'en_attente_reception']} tone={purchase.reception_status === 'reception_avec_anomalie' || purchase.reception_status === 'reception_refusee' ? 'warning' : 'normal'} />
+              <StatusBadge label={cashStockEntryStatusLabels[purchase.stock_entry_status ?? 'non_entre_stock']} tone={purchase.stock_entry_status === 'bloque_stock' ? 'warning' : 'normal'} />
             </Link>
           ))}
           {purchases.length === 0 && <p className="p-5 text-sm text-slate-600">Aucun achat en especes.</p>}
@@ -105,4 +109,8 @@ export function CashPurchasesList() {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return <div className="surface p-5"><p className="text-sm text-slate-500">{label}</p><p className="mt-1 font-bold text-slate-950">{value}</p></div>
+}
+
+function StatusBadge({ label, tone }: { label: string; tone: 'normal' | 'warning' }) {
+  return <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${tone === 'warning' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-[#1E3A8A]'}`}>{label}</span>
 }

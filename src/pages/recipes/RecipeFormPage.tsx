@@ -74,7 +74,7 @@ export function RecipeFormPage() {
   }, [articles, units, watched.final_price, watched.margin_coefficient, watched.portions, watchedIngredients])
 
   useEffect(() => {
-    Promise.all([listArticles({ status: 'active', pageSize: 1000 }), listUnits(), listFamilies(), listSubCategories()])
+    Promise.all([listArticles({ status: 'active', pageSize: 1000, usableInRecipes: true }), listUnits(), listFamilies(), listSubCategories()])
       .then(([articleResult, loadedUnits, loadedFamilies, loadedSubCategories]) => {
         setArticles(articleResult.articles)
         setUnits(loadedUnits)

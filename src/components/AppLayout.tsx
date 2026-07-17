@@ -14,14 +14,17 @@ const navItems = [
   { to: '/recipes', label: 'Fiches techniques' },
   { to: '/events', label: 'Evenements' },
   { to: '/purchases/new', label: 'Nouvel achat' },
+  { to: '/purchases/tracking', label: 'Suivi achats' },
   { to: '/purchase-needs', label: "Besoins d'achat" },
   { to: '/cash-purchases', label: 'Achats especes' },
+  { to: '/cash-purchases/report', label: 'Rapport caisse' },
   { to: '/purchase-orders', label: 'Commandes' },
   { to: '/receptions', label: 'Receptions' },
   { to: '/stock', label: 'Stock' },
   { to: '/stock/stock-out', label: 'Sorties stock' },
   { to: '/inventories', label: 'Inventaires' },
   { to: '/invoices', label: 'Factures' },
+  { to: '/invoices/payables', label: 'Factures a payer' },
   { to: '/sales', label: 'Ventes' },
   { to: '/profile', label: 'Mon profil' },
 ]
@@ -68,6 +71,10 @@ export function AppLayout() {
             ))}
             {profile?.role === 'direction' && (
               <>
+                <NavLink to="/validations/my" className={linkClass}>
+                  <span className="truncate">Mes validations</span>
+                  <MenuBadge count={notifications['/validations/my']} />
+                </NavLink>
                 <NavLink to="/admin/families" className={linkClass}>
                   Categories
                 </NavLink>

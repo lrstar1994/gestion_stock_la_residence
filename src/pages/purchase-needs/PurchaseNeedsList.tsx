@@ -27,6 +27,18 @@ import type { NeedCalculationSource, NeedDestination, NeedStatus, NeedType, Need
 import type { Family } from '../../lib/catalog'
 import type { Supplier } from '../../lib/suppliers'
 
+type ProposedGroup = {
+  key: string
+  supplierId: string
+  supplierName: string
+  requestedDate: string
+  ids: string[]
+  articleNames: string[]
+  count: number
+  total: number
+  highestUrgency: NeedUrgency
+}
+
 export function PurchaseNeedsList() {
   const { profile } = useAuth()
   const canCreate = canCreatePurchaseNeeds(profile?.role)
@@ -83,6 +95,7 @@ export function PurchaseNeedsList() {
     estimated: needs.reduce((sum, need) => sum + Number(need.estimated_cost ?? 0), 0),
     budget: needs.reduce((sum, need) => sum + Number(need.budget ?? 0), 0),
   }), [needs])
+  const proposedGroups = useMemo(() => buildProposedGroups(needs), [needs])
 
   const toggleSelection = (id: string) => {
     const need = needs.find((item) => item.id === id)
@@ -116,6 +129,13 @@ export function PurchaseNeedsList() {
     toast.success('Besoins regroupes avec succes')
     setSelectedIds([])
     setGroupSupplierId('')
+    await load()
+  }
+
+  const groupProposal = async (proposal: ProposedGroup) => {
+    await groupPurchaseNeeds(proposal.ids, proposal.supplierId, profile?.id)
+    toast.success('Besoins regroupes avec succes')
+    setSelectedIds([])
     await load()
   }
 
@@ -175,6 +195,43 @@ export function PurchaseNeedsList() {
               </>
             )}
             <span className="text-sm text-slate-500">Total HT selection: {selectedNeeds.reduce((sum, need) => sum + Number(need.estimated_cost ?? 0), 0).toLocaleString('fr-FR')} Ar</span>
+          </div>
+        </section>
+      )}
+
+      {canGroup && proposedGroups.length > 0 && (
+        <section className="surface overflow-hidden">
+          <div className="border-b border-slate-200 px-5 py-4">
+            <h2 className="text-lg font-bold text-slate-950">Groupes proposes</h2>
+            <p className="mt-1 text-sm text-slate-600">Besoins valides, meme fournisseur et meme date souhaitee. Un clic suffit pour les regrouper.</p>
+          </div>
+          <div className="divide-y divide-slate-200">
+            {proposedGroups.map((proposal) => (
+              <div key={proposal.key} className="grid gap-3 px-5 py-4 lg:grid-cols-[1.3fr_150px_110px_150px_1fr_auto] lg:items-center">
+                <div>
+                  <p className="font-bold text-slate-950">{proposal.supplierName}</p>
+                  <p className="mt-1 text-xs text-slate-500">{proposal.articleNames.join(', ')}</p>
+                </div>
+                <div>
+                  <p className="field-label">Date souhaitee</p>
+                  <p className="mt-1 font-semibold">{proposal.requestedDate ? new Date(proposal.requestedDate).toLocaleDateString('fr-FR') : 'Sans date'}</p>
+                </div>
+                <div>
+                  <p className="field-label">Lignes</p>
+                  <p className="mt-1 font-semibold">{proposal.count}</p>
+                </div>
+                <div>
+                  <p className="field-label">Total HT</p>
+                  <p className="mt-1 font-semibold">{proposal.total.toLocaleString('fr-FR')} Ar</p>
+                </div>
+                <div>
+                  <Badge className={urgencyClass(proposal.highestUrgency)}>{needUrgencyLabels[proposal.highestUrgency]}</Badge>
+                </div>
+                <button type="button" onClick={() => groupProposal(proposal)} className="btn-primary">
+                  <Layers className="mr-2 h-4 w-4" /> Regrouper
+                </button>
+              </div>
+            ))}
           </div>
         </section>
       )}
@@ -294,4 +351,44 @@ function urgencyClass(urgency: NeedUrgency) {
     urgent: 'bg-orange-50 text-orange-800',
     tres_urgent: 'bg-red-50 text-red-800',
   }[urgency]
+}
+
+function buildProposedGroups(needs: PurchaseNeedGlobal[]): ProposedGroup[] {
+  const groups = new Map<string, ProposedGroup>()
+
+  for (const need of needs) {
+    if (need.status !== 'valide' || need.group_id || !need.supplier_id) continue
+    const requestedDate = need.requested_date ?? ''
+    const key = `${need.supplier_id}-${requestedDate}`
+    const current = groups.get(key) ?? {
+      key,
+      supplierId: need.supplier_id,
+      supplierName: need.suppliers?.name ?? 'Fournisseur non renseigne',
+      requestedDate,
+      ids: [],
+      articleNames: [],
+      count: 0,
+      total: 0,
+      highestUrgency: 'normal' as NeedUrgency,
+    }
+
+    current.ids.push(need.id)
+    current.articleNames.push(need.articles?.name ?? 'Article')
+    current.count += 1
+    current.total += Number(need.estimated_cost ?? 0)
+    current.highestUrgency = higherUrgency(current.highestUrgency, need.urgency)
+    groups.set(key, current)
+  }
+
+  return [...groups.values()]
+    .filter((group) => group.count > 1)
+    .sort((left, right) => {
+      if (left.requestedDate !== right.requestedDate) return left.requestedDate.localeCompare(right.requestedDate)
+      return left.supplierName.localeCompare(right.supplierName, 'fr', { sensitivity: 'base' })
+    })
+}
+
+function higherUrgency(left: NeedUrgency, right: NeedUrgency): NeedUrgency {
+  const order: Record<NeedUrgency, number> = { normal: 0, urgent: 1, tres_urgent: 2 }
+  return order[right] > order[left] ? right : left
 }

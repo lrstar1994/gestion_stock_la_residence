@@ -59,6 +59,23 @@ function normalizeName(value?: string | null) {
   return value?.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() ?? ''
 }
 
+function fiscalSettingsFromSupplier(supplier?: Supplier): ReceptionFiscalSettings {
+  if (!supplier) {
+    return defaultFiscalSettings
+  }
+
+  return {
+    supplier_tax_status: supplier.supplier_tax_status ?? defaultFiscalSettings.supplier_tax_status,
+    invoice_tax_mode: supplier.default_invoice_tax_mode ?? defaultFiscalSettings.invoice_tax_mode,
+    vat_rate: Number(supplier.default_vat_rate ?? defaultFiscalSettings.vat_rate),
+    vat_recoverable: supplier.default_vat_recoverable ?? defaultFiscalSettings.vat_recoverable,
+    declared_extra_tax_rate: supplier.default_declared_extra_tax_enabled ? Number(supplier.default_declared_extra_tax_rate ?? 0) : 0,
+    declared_extra_tax_amount: 0,
+    manual_cost_total: 0,
+    effective_cost_note: '',
+  }
+}
+
 export function ReceptionFormPage() {
   const { id } = useParams()
   const [searchParams] = useSearchParams()
@@ -74,6 +91,7 @@ export function ReceptionFormPage() {
   const [orders, setOrders] = useState<PurchaseOrder[]>([])
   const [cashPurchases, setCashPurchases] = useState<CashPurchase[]>([])
   const [fiscalSettings, setFiscalSettings] = useState<ReceptionFiscalSettings>(defaultFiscalSettings)
+  const isCashReception = Boolean(values.cash_purchase_id)
   const total = useMemo(() => calculateReceptionTotal(values.items), [values.items])
   const fiscalVatAmount = ['invoice_with_recoverable_vat', 'invoice_ttc_vat_not_recoverable'].includes(fiscalSettings.invoice_tax_mode)
     ? total * Number(fiscalSettings.vat_rate ?? 0) / 100
@@ -91,7 +109,9 @@ export function ReceptionFormPage() {
     manualCostTotal: fiscalSettings.manual_cost_total,
   }), [fiscalSettings, fiscalVatAmount, total])
 
-  const selectOrder = useCallback((order: PurchaseOrder, fallbackLocationId = '') => {
+  const selectOrder = useCallback((order: PurchaseOrder, fallbackLocationId = '', supplierSource = suppliers) => {
+    const supplier = supplierSource.find((item) => item.id === order.supplier_id)
+    setFiscalSettings(fiscalSettingsFromSupplier(supplier))
     setValues((current) => ({
       ...current,
       supplier_id: order.supplier_id,
@@ -101,18 +121,20 @@ export function ReceptionFormPage() {
       items: order.purchase_order_items?.map((item) => {
         const remaining = Math.max(0, Number(item.quantity_ordered ?? 0) - Number(item.quantity_received ?? 0))
         const stockUnitId = item.articles?.unit_id ?? item.unit_id
+        const factor = Number((item.conversion_factor ?? (item.unit_id === stockUnitId ? 1 : 0)) || 1)
+        const stockRemaining = remaining * factor
         return {
           article_id: item.article_id,
           quantity_ordered: remaining,
-          quantity_delivered: remaining,
-          quantity_accepted: remaining,
+          quantity_delivered: stockRemaining,
+          quantity_accepted: stockRemaining,
           unit_id: stockUnitId,
           unit_display_id: item.unit_id,
-          conversion_factor: item.unit_id === stockUnitId ? 1 : undefined,
+          conversion_factor: factor,
           quantity_delivered_display: remaining,
           quantity_accepted_display: remaining,
           unit_price_planned: Number(item.unit_price ?? 0),
-          unit_price_real: Number(item.unit_price ?? 0),
+          unit_price_real: Number(item.unit_price_stock ?? (factor > 0 ? Number(item.unit_price ?? 0) / factor : item.unit_price) ?? 0),
           unit_price_display: Number(item.unit_price ?? 0),
           quality: 'conforme',
           quality_comment: '',
@@ -121,11 +143,14 @@ export function ReceptionFormPage() {
         }
       }) ?? [],
     }))
-  }, [])
+  }, [suppliers])
 
   const selectCashPurchase = useCallback((cashPurchase: CashPurchase, fallbackLocationId = '') => {
     const supplierName = cashPurchase.cash_purchase_items?.map((item) => item.supplier).find(Boolean)
     const matchedSupplier = suppliers.find((supplier) => normalizeName(supplier.name) === normalizeName(supplierName))
+    if (matchedSupplier) {
+      setFiscalSettings(fiscalSettingsFromSupplier(matchedSupplier))
+    }
 
     setValues((current) => ({
       ...current,
@@ -138,15 +163,15 @@ export function ReceptionFormPage() {
       items: cashPurchase.cash_purchase_items?.map((item) => ({
         article_id: item.article_id,
         quantity_ordered: Number(item.quantity_planned ?? 0),
-        quantity_delivered: Number(item.quantity_bought ?? 0),
-        quantity_accepted: Number(item.quantity_bought ?? 0),
         unit_id: item.articles?.unit_id ?? item.unit_id,
         unit_display_id: item.unit_id,
-        conversion_factor: item.unit_id === (item.articles?.unit_id ?? item.unit_id) ? 1 : undefined,
+        conversion_factor: Number((item.conversion_factor ?? (item.unit_id === (item.articles?.unit_id ?? item.unit_id) ? 1 : 0)) || 1),
+        quantity_delivered: Number(item.quantity_bought_stock ?? item.quantity_bought ?? 0),
+        quantity_accepted: Number(item.quantity_bought_stock ?? item.quantity_bought ?? 0),
         quantity_delivered_display: Number(item.quantity_bought ?? 0),
         quantity_accepted_display: Number(item.quantity_bought ?? 0),
         unit_price_planned: Number(item.unit_price_estimated ?? 0),
-        unit_price_real: Number(item.unit_price_real ?? 0),
+        unit_price_real: Number(item.unit_price_real_stock ?? item.unit_price_real ?? 0),
         unit_price_display: Number(item.unit_price_real ?? 0),
         quality: 'conforme',
         quality_comment: '',
@@ -155,6 +180,12 @@ export function ReceptionFormPage() {
       })) ?? [],
     }))
   }, [suppliers])
+
+  const changeSupplier = (supplierId: string) => {
+    const supplier = suppliers.find((item) => item.id === supplierId)
+    setFiscalSettings(fiscalSettingsFromSupplier(supplier))
+    setValues((current) => ({ ...current, supplier_id: supplierId }))
+  }
 
   const changeReceptionMode = (mode: ReceptionMode) => {
     setReceptionMode(mode)
@@ -240,7 +271,7 @@ export function ReceptionFormPage() {
         const order = loadedOrders.find((item) => item.id === orderId)
         if (order) {
           setReceptionMode('order')
-          selectOrder(order, defaultLocation?.id ?? loadedLocations[0]?.id ?? '')
+          selectOrder(order, defaultLocation?.id ?? loadedLocations[0]?.id ?? '', loadedSuppliers)
         }
       }
     }
@@ -397,7 +428,7 @@ export function ReceptionFormPage() {
               </button>
               <button type="button" onClick={() => changeReceptionMode('cash')} className={`rounded-md border px-4 py-3 text-left text-sm font-semibold transition ${receptionMode === 'cash' ? 'border-[#1E3A8A] bg-blue-50 text-[#1E3A8A]' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>
                 Depuis un achat en especes
-                <span className="mt-1 block text-xs font-normal text-slate-500">Pour entrer en stock un achat cash cloture.</span>
+                <span className="mt-1 block text-xs font-normal text-slate-500">Pour controler un achat cash dont le retour d'achat est saisi.</span>
               </button>
               <button type="button" onClick={() => changeReceptionMode('manual')} className={`rounded-md border px-4 py-3 text-left text-sm font-semibold transition ${receptionMode === 'manual' ? 'border-[#1E3A8A] bg-blue-50 text-[#1E3A8A]' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>
                 Reception sans commande
@@ -417,13 +448,18 @@ export function ReceptionFormPage() {
           )}
 
           {receptionMode === 'cash' && (
-            <label className="block">
-              <span className="field-label">Achat en especes</span>
-              <select value={values.cash_purchase_id} onChange={(event) => { const cashPurchase = cashPurchases.find((item) => item.id === event.target.value); if (cashPurchase) selectCashPurchase(cashPurchase, values.location_id); else setValues((current) => ({ ...current, cash_purchase_id: '', items: [] })) }} className="input mt-2">
-                <option value="">Selectionner un achat en especes</option>
-                {cashPurchases.map((purchase) => <option key={purchase.id} value={purchase.id}>{purchase.reference} - {purchase.reason}</option>)}
-              </select>
-            </label>
+            <div className="space-y-3">
+              <label className="block">
+                <span className="field-label">Achat en especes</span>
+                <select value={values.cash_purchase_id} onChange={(event) => { const cashPurchase = cashPurchases.find((item) => item.id === event.target.value); if (cashPurchase) selectCashPurchase(cashPurchase, values.location_id); else setValues((current) => ({ ...current, cash_purchase_id: '', items: [] })) }} className="input mt-2">
+                  <option value="">Selectionner un achat en especes</option>
+                  {cashPurchases.map((purchase) => <option key={purchase.id} value={purchase.id}>{purchase.reference} - {purchase.reason}</option>)}
+                </select>
+              </label>
+              <div className="rounded-md border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+                La reception est disponible des que le retour d'achat est saisi avec les lignes a controler. Un ecart de monnaie ou une caisse non cloturee ne bloque pas le controle marchandise ni l'entree en stock.
+              </div>
+            </div>
           )}
 
           {receptionMode === 'manual' && (
@@ -435,11 +471,11 @@ export function ReceptionFormPage() {
       )}
 
       <section className="surface grid gap-4 p-5 md:grid-cols-2">
-        <label className="block"><span className="field-label">Fournisseur</span><select value={values.supplier_id} onChange={(event) => setValues((current) => ({ ...current, supplier_id: event.target.value }))} className="input mt-2"><option value="">Selectionner</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
+        <label className="block"><span className="field-label">Fournisseur</span><select value={values.supplier_id} onChange={(event) => changeSupplier(event.target.value)} disabled={isCashReception && Boolean(values.supplier_id)} className="input mt-2 disabled:bg-slate-100"><option value="">Selectionner</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
         <label className="block"><span className="field-label">Localisation reception</span><select value={values.location_id} onChange={(event) => setValues((current) => ({ ...current, location_id: event.target.value }))} className="input mt-2">{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
         <label className="block"><span className="field-label">Date reception</span><input type="date" value={values.reception_date} onChange={(event) => setValues((current) => ({ ...current, reception_date: event.target.value }))} className="input mt-2" /></label>
-        <label className="block"><span className="field-label">Numero facture/recu</span><input value={values.invoice_number} onChange={(event) => setValues((current) => ({ ...current, invoice_number: event.target.value }))} className="input mt-2" /></label>
-        <label className="block"><span className="field-label">Date facture</span><input type="date" value={values.invoice_date} onChange={(event) => setValues((current) => ({ ...current, invoice_date: event.target.value }))} className="input mt-2" /></label>
+        <label className="block"><span className="field-label">Numero facture/recu</span><input value={values.invoice_number} onChange={(event) => setValues((current) => ({ ...current, invoice_number: event.target.value }))} readOnly={isCashReception && Boolean(values.invoice_number)} className="input mt-2 read-only:bg-slate-100" /></label>
+        <label className="block"><span className="field-label">Date facture</span><input type="date" value={values.invoice_date} onChange={(event) => setValues((current) => ({ ...current, invoice_date: event.target.value }))} readOnly={isCashReception && Boolean(values.invoice_date)} className="input mt-2 read-only:bg-slate-100" /></label>
         <label className="block"><span className="field-label">Commentaire</span><input value={values.comment} onChange={(event) => setValues((current) => ({ ...current, comment: event.target.value }))} className="input mt-2" /></label>
         <label className="flex gap-3 rounded-md border border-amber-200 bg-amber-50 p-4 md:col-span-2">
           <input type="checkbox" checked={values.is_historical} onChange={(event) => setValues((current) => ({ ...current, is_historical: event.target.checked }))} className="mt-1 h-4 w-4" />
@@ -450,9 +486,31 @@ export function ReceptionFormPage() {
         </label>
       </section>
 
+      {isCashReception ? (
+        <section className="surface grid gap-4 p-5 md:grid-cols-2">
+          <div className="md:col-span-2">
+            <p className="eyebrow">Achat especes</p>
+            <h2 className="mt-2 text-lg font-bold text-slate-950">Informations administratives reprises du retour d'achat</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Ces informations servent a comprendre le dossier. La reception controle uniquement les marchandises livrees, acceptees, refusees et les anomalies.
+            </p>
+          </div>
+          <Info label="Fournisseur du justificatif" value={suppliers.find((supplier) => supplier.id === values.supplier_id)?.name ?? 'A confirmer'} />
+          <Info label="Justificatif" value={values.invoice_number || 'Non renseigne'} />
+          <Info label="Date justificatif" value={values.invoice_date || '-'} />
+          <Info label="Mode fiscal applique" value={invoiceTaxModeLabels[fiscalSettings.invoice_tax_mode]} />
+          <Info label="TVA recuperable" value={fiscalSettings.vat_recoverable ? 'Oui' : 'Non'} />
+          <Info label="Charge declarative" value={`${Number(fiscalSettings.declared_extra_tax_rate ?? 0).toLocaleString('fr-FR')} %`} />
+          <div className="rounded-md border border-[#D4AF37]/30 bg-amber-50 p-4 text-sm text-slate-800 md:col-span-2">
+            <p>Total recu saisi : <strong>{total.toLocaleString('fr-FR')} Ar</strong></p>
+            <p>Valeur d'entree stock estimee : <strong>{Number(fiscalPreview.effective_material_cost_total ?? 0).toLocaleString('fr-FR')} Ar</strong></p>
+            <p className="mt-2 text-xs text-slate-600">Les ecarts caisse restent suivis dans le dossier d'achat especes et n'empechent pas la reception.</p>
+          </div>
+        </section>
+      ) : (
       <section className="surface grid gap-4 p-5 md:grid-cols-2">
         <div className="md:col-span-2">
-          <p className="eyebrow">Fiscalite et cout matiere interne</p>
+          <p className="eyebrow">Fiscalite et valeur d'entree stock</p>
           <h2 className="mt-2 text-lg font-bold text-slate-950">Valorisation stock de la reception</h2>
           <p className="mt-1 text-sm text-slate-600">Ces reglages sont appliques aux lignes recues au moment de l'enregistrement.</p>
         </div>
@@ -491,7 +549,7 @@ export function ReceptionFormPage() {
           </label>
         )}
         <label className="block md:col-span-2">
-          <span className="field-label">Note cout matiere interne</span>
+          <span className="field-label">Note valeur d'entree stock</span>
           <input value={fiscalSettings.effective_cost_note} onChange={(event) => setFiscalSettings((current) => ({ ...current, effective_cost_note: event.target.value }))} className="input mt-2" placeholder="Motif ou precision si cout exceptionnel" />
         </label>
         <div className="rounded-md border border-[#D4AF37]/30 bg-amber-50 p-4 text-sm text-slate-800 md:col-span-2">
@@ -499,9 +557,10 @@ export function ReceptionFormPage() {
           <p>TVA recuperable estimee : <strong>{fiscalPreview.recoverable_vat_amount.toLocaleString('fr-FR')} Ar</strong></p>
           <p>TVA non recuperable estimee : <strong>{fiscalPreview.non_recoverable_vat_amount.toLocaleString('fr-FR')} Ar</strong></p>
           <p>Charge declarative estimee : <strong>{fiscalPreview.declared_extra_tax_amount.toLocaleString('fr-FR')} Ar</strong></p>
-          <p>Cout matiere interne estime : <strong>{Number(fiscalPreview.effective_material_cost_total ?? 0).toLocaleString('fr-FR')} Ar</strong></p>
+          <p>Valeur d'entree stock estimee : <strong>{Number(fiscalPreview.effective_material_cost_total ?? 0).toLocaleString('fr-FR')} Ar</strong></p>
         </div>
       </section>
+      )}
 
       <section className="surface overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
@@ -555,7 +614,7 @@ export function ReceptionFormPage() {
                       <input type="number" min="0" step="0.0001" value={item.conversion_factor ?? 1} onChange={(event) => updateItem(index, computeConversionPatch(item, { conversion_factor: Number(event.target.value) }))} className="input mt-2" />
                     </label>
                     <Info label="Entree stock" value={`${Number(item.quantity_accepted ?? 0).toLocaleString('fr-FR')} ${stockUnit?.abbreviation ?? selectedArticle?.units?.abbreviation ?? ''}`} />
-                    <Info label="Cout interne stock" value={`${Number(item.unit_price_real ?? 0).toLocaleString('fr-FR')} Ar / ${stockUnit?.abbreviation ?? selectedArticle?.units?.abbreviation ?? ''}`} />
+                    <Info label="Valeur entree stock" value={`${Number(item.unit_price_real ?? 0).toLocaleString('fr-FR')} Ar / ${stockUnit?.abbreviation ?? selectedArticle?.units?.abbreviation ?? ''}`} />
                     {needsManualFactor && <p className="font-semibold text-amber-700 md:col-span-3">Conversion manuelle requise : indiquez combien vaut 1 {displayUnit?.abbreviation} en {stockUnit?.abbreviation}.</p>}
                   </div>
                 </div>

@@ -55,7 +55,7 @@ export function StockList() {
     low: rows.filter((row) => stockStatus(row) === 'bas').length,
     minimum: rows.filter((row) => stockStatus(row) === 'minimum').length,
     out: rows.filter((row) => stockStatus(row) === 'rupture').length,
-    value: rows.reduce((sum, row) => sum + Number(row.total_quantity ?? 0) * Number(row.average_price ?? 0), 0),
+    value: rows.reduce((sum, row) => sum + Number(row.stock_value ?? (Number(row.total_quantity ?? 0) * Number(row.average_price ?? 0))), 0),
   }
   const alerts = rows.filter((row) => ['minimum', 'bas', 'rupture'].includes(stockStatus(row)))
 
@@ -113,18 +113,19 @@ export function StockList() {
       </section>
 
       <section className="surface overflow-hidden">
-        <div className="hidden grid-cols-[1fr_130px_1.2fr_110px_120px_120px_110px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
-          <span>Article</span><span>Quantite totale</span><span>Localisations</span><span>Seuil</span><span>Dernier cout connu</span><span>Cout moyen stock</span><span>Statut</span>
+        <div className="hidden grid-cols-[1fr_130px_1.2fr_100px_120px_120px_130px_110px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
+          <span>Article</span><span>Quantite totale</span><span>Localisations</span><span>Seuil</span><span>Dernier cout connu</span><span>Cout moyen stock</span><span>Valeur stock</span><span>Statut</span>
         </div>
         <div className="divide-y divide-slate-200">
           {rows.map((row) => (
-            <div key={row.article_id} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_130px_1.2fr_110px_120px_120px_110px] xl:items-center">
+            <div key={row.article_id} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_130px_1.2fr_100px_120px_120px_130px_110px] xl:items-center">
               <Link to={`/stock/articles/${row.article_id}`} className="font-bold text-[#1E3A8A]">{row.articles?.name}<span className="block text-xs font-normal text-slate-500">{row.articles?.families?.name}</span></Link>
               <span>{Number(row.total_quantity ?? 0).toLocaleString('fr-FR')} {row.articles?.units?.abbreviation}</span>
-              <span className="text-sm text-slate-600">{row.locations?.map((location) => `${location.location_name}: ${Number(location.quantity).toLocaleString('fr-FR')}`).join(' | ') || '-'}</span>
+              <span className="text-sm text-slate-600">{row.locations?.map((location) => `${location.location_name}: ${Number(location.quantity).toLocaleString('fr-FR')} (${Number(location.stock_value ?? 0).toLocaleString('fr-FR')} Ar)`).join(' | ') || '-'}</span>
               <span>{Number(row.articles?.min_stock ?? 0).toLocaleString('fr-FR')}</span>
               <span>{Number(row.last_price ?? 0).toLocaleString('fr-FR')} Ar</span>
               <span>{Number(row.average_price ?? 0).toLocaleString('fr-FR')} Ar</span>
+              <span>{Number(row.stock_value ?? (Number(row.total_quantity ?? 0) * Number(row.average_price ?? 0))).toLocaleString('fr-FR')} Ar</span>
               <Badge status={stockStatus(row)} />
             </div>
           ))}

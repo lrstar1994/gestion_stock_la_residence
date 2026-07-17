@@ -98,6 +98,7 @@ export function ArticleDetail() {
         <Info label="Fournisseur habituel" value={article.default_supplier || '-'} />
         <Info label="Stock minimum" value={String(article.min_stock ?? 0)} />
         <Info label="A vendre sans transformation" value={article.sellable_without_transformation ? 'Oui' : 'Non'} />
+        <Info label="Utilisable en fiche technique" value={article.usable_in_recipes ? 'Oui' : 'Non'} />
         <Info label="Creation" value={new Date(article.created_at).toLocaleDateString('fr-FR')} />
         <Info label="Mise a jour" value={new Date(article.updated_at).toLocaleDateString('fr-FR')} />
       </section>

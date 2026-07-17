@@ -7,9 +7,11 @@ import type { EffectiveCostMethod, InvoiceTaxMode, SupplierTaxStatus } from './m
 
 export const invoiceStatuses = ['a_verifier', 'validee', 'a_payer', 'payee', 'partiellement_paye', 'conteste', 'cloturee', 'annulee'] as const
 export const paymentModes = ['especes', 'virement', 'mobile_money', 'cheque', 'credit_fournisseur', 'autre'] as const
+export const invoicePaymentStatuses = ['a_preparer', 'prepare', 'a_valider_direction', 'refuse_direction', 'valide_direction', 'a_executer', 'execute', 'annule'] as const
 
 export type InvoiceStatus = (typeof invoiceStatuses)[number]
 export type PaymentMode = (typeof paymentModes)[number]
+export type InvoicePaymentStatus = (typeof invoicePaymentStatuses)[number]
 
 export const invoiceStatusLabels: Record<InvoiceStatus, string> = {
   a_verifier: 'A verifier',
@@ -29,6 +31,17 @@ export const paymentModeLabels: Record<PaymentMode, string> = {
   cheque: 'Cheque',
   credit_fournisseur: 'Credit fournisseur',
   autre: 'Autre',
+}
+
+export const invoicePaymentStatusLabels: Record<InvoicePaymentStatus, string> = {
+  a_preparer: 'Paiement a preparer',
+  prepare: 'Paiement prepare',
+  a_valider_direction: 'Paiement a valider Direction',
+  refuse_direction: 'Paiement refuse Direction',
+  valide_direction: 'Paiement valide Direction',
+  a_executer: 'Paiement a executer',
+  execute: 'Paiement execute',
+  annule: 'Paiement annule',
 }
 
 export type InvoiceItem = {
@@ -67,11 +80,28 @@ export type InvoicePayment = {
   amount: number
   payment_mode: PaymentMode
   payment_date: string
+  status?: InvoicePaymentStatus | null
+  planned_payment_date?: string | null
   payment_reference: string | null
   comment: string | null
+  planned_by?: string | null
+  planned_at?: string | null
+  validated_by?: string | null
+  validated_at?: string | null
+  validation_comment?: string | null
+  refused_by?: string | null
+  refused_at?: string | null
+  refusal_reason?: string | null
+  executed_by?: string | null
+  executed_at?: string | null
+  execution_comment?: string | null
+  cash_account?: string | null
+  beneficiary?: string | null
   created_at: string
   created_by: string | null
   creator?: Pick<Profile, 'id' | 'full_name'>
+  validator?: Pick<Profile, 'id' | 'full_name'>
+  executor?: Pick<Profile, 'id' | 'full_name'>
 }
 
 export type InvoiceHistory = {
@@ -179,6 +209,8 @@ export const paymentSchema = z.object({
   payment_mode: z.enum(paymentModes),
   payment_date: z.string().min(1),
   payment_reference: z.string().optional(),
+  cash_account: z.string().optional(),
+  beneficiary: z.string().optional(),
   comment: z.string().optional(),
 })
 
@@ -193,8 +225,16 @@ export function canManageInvoices(role?: UserRole) {
   return role === 'direction' || role === 'comptabilite'
 }
 
-export function canPayInvoices(role?: UserRole) {
-  return role === 'direction' || role === 'comptabilite'
+export function canPrepareInvoicePayments(role?: UserRole) {
+  return role ? ['direction', 'comptabilite', 'caisse'].includes(role) : false
+}
+
+export function canValidateInvoicePayments(role?: UserRole) {
+  return role === 'direction'
+}
+
+export function canExecuteInvoicePayments(role?: UserRole) {
+  return role ? ['direction', 'comptabilite', 'caisse'].includes(role) : false
 }
 
 export function canExportInvoices(role?: UserRole) {

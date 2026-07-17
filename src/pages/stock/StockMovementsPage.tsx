@@ -56,7 +56,7 @@ export function StockMovementsPage() {
 
       <section className="surface overflow-hidden">
         <div className="hidden grid-cols-[150px_100px_1fr_110px_110px_1fr_130px_130px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
-          <span>Reference mouvement</span><span>Type</span><span>Article</span><span>Quantite</span><span>Unite</span><span>Origine / destination</span><span>Cout interne</span><span>Statut</span>
+          <span>Reference mouvement</span><span>Type</span><span>Article</span><span>Quantite</span><span>Unite</span><span>Origine / destination</span><span>Valeur stock</span><span>Statut</span>
         </div>
         <div className="divide-y divide-slate-200">
           {movements.map((movement) => (
