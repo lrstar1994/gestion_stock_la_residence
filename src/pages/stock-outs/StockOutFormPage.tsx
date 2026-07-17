@@ -156,10 +156,10 @@ export function StockOutFormPage() {
                 <div className="grid gap-3 md:grid-cols-4">
                   <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={item.is_additional} onChange={(event) => updateItem(index, { is_additional: event.target.checked })} /> Rajout</label>
                   <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={item.is_return} onChange={(event) => updateItem(index, { is_return: event.target.checked })} /> Retour</label>
-                  <input type="number" disabled={!item.is_return} value={item.return_quantity ?? 0} onChange={(event) => updateItem(index, { return_quantity: Number(event.target.value) })} className="input" placeholder="Quantite retour" />
+                  <label className="block"><span className="field-label">Quantite retour</span><input type="number" disabled={!item.is_return} value={item.return_quantity ?? 0} onChange={(event) => updateItem(index, { return_quantity: Number(event.target.value) })} className="input mt-2" /></label>
                   <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={item.is_loss} onChange={(event) => updateItem(index, { is_loss: event.target.checked })} /> Perte</label>
-                  {item.is_loss && <select value={item.loss_type ?? 'autre'} onChange={(event) => updateItem(index, { loss_type: event.target.value as typeof item.loss_type })} className="input">{lossTypes.map((type) => <option key={type} value={type}>{lossTypeLabels[type]}</option>)}</select>}
-                  {item.is_loss && <input value={item.loss_comment ?? ''} onChange={(event) => updateItem(index, { loss_comment: event.target.value })} className="input md:col-span-3" placeholder="Motif de perte" />}
+                  {item.is_loss && <label className="block"><span className="field-label">Type de perte</span><select value={item.loss_type ?? 'autre'} onChange={(event) => updateItem(index, { loss_type: event.target.value as typeof item.loss_type })} className="input mt-2">{lossTypes.map((type) => <option key={type} value={type}>{lossTypeLabels[type]}</option>)}</select></label>}
+                  {item.is_loss && <label className="block md:col-span-3"><span className="field-label">Motif de perte</span><input value={item.loss_comment ?? ''} onChange={(event) => updateItem(index, { loss_comment: event.target.value })} className="input mt-2" /></label>}
                 </div>
               </div>
             )

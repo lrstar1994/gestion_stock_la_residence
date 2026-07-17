@@ -115,12 +115,12 @@ export function InventoryFormPage() {
             const difference = Number(item.counted_quantity) - Number(item.theoretical_quantity)
             return (
               <div key={item.article_id} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_130px_130px_120px_120px_1fr] xl:items-center">
-                <div><span className="font-semibold">{item.articles?.name}</span><p className="text-xs text-slate-500">{item.articles?.families?.name ?? 'Sans famille'}</p></div>
-                <span>{Number(item.theoretical_quantity).toLocaleString('fr-FR')}</span>
-                <input type="number" value={item.counted_quantity} onChange={(event) => updateItem(item.article_id, Number(event.target.value))} className="input" />
-                <span>{item.units?.abbreviation}</span>
-                <span className={difference > 0 ? 'font-bold text-emerald-600' : difference < 0 ? 'font-bold text-red-600' : 'font-bold text-slate-700'}>{difference.toLocaleString('fr-FR')}</span>
-                <input value={item.reason ?? ''} onChange={(event) => updateReason(item.article_id, event.target.value)} className="input" placeholder="Motif si ecart important" />
+                <div><span className="field-label xl:hidden">Article</span><span className="font-semibold">{item.articles?.name}</span><p className="text-xs text-slate-500">{item.articles?.families?.name ?? 'Sans famille'}</p></div>
+                <div><span className="field-label xl:hidden">Quantite theorique</span><span>{Number(item.theoretical_quantity).toLocaleString('fr-FR')}</span></div>
+                <label className="block"><span className="field-label xl:hidden">Quantite comptee</span><input type="number" value={item.counted_quantity} onChange={(event) => updateItem(item.article_id, Number(event.target.value))} className="input mt-2 xl:mt-0" /></label>
+                <div><span className="field-label xl:hidden">Unite</span><span>{item.units?.abbreviation}</span></div>
+                <div><span className="field-label xl:hidden">Ecart calcule</span><span className={difference > 0 ? 'font-bold text-emerald-600' : difference < 0 ? 'font-bold text-red-600' : 'font-bold text-slate-700'}>{difference.toLocaleString('fr-FR')}</span></div>
+                <label className="block"><span className="field-label xl:hidden">Motif ecart</span><input value={item.reason ?? ''} onChange={(event) => updateReason(item.article_id, event.target.value)} className="input mt-2 xl:mt-0" placeholder="Motif si ecart important" /></label>
               </div>
             )
           })}

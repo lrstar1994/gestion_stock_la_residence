@@ -177,47 +177,57 @@ export function RecipeFormPage() {
               return (
                 <div key={field.id} className="rounded-md border border-slate-200 bg-slate-50 p-3">
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[180px_220px_minmax(260px,1fr)]">
-                    <select
-                      value={articleFilter.familyId}
-                      className="input min-w-0"
-                      onChange={(event) => {
-                        updateIngredientArticleFilter(field.id, index, {
-                          familyId: event.target.value,
-                          subCategoryName: 'all',
-                        })
-                      }}
-                    >
-                      <option value="all">Toutes categories</option>
-                      {families.map((family) => <option key={family.id} value={family.id}>{family.name}</option>)}
-                    </select>
-                    <select
-                      value={articleFilter.subCategoryName}
-                      className="input min-w-0"
-                      onChange={(event) => {
-                        updateIngredientArticleFilter(field.id, index, {
-                          ...articleFilter,
-                          subCategoryName: event.target.value,
-                        })
-                      }}
-                    >
-                      <option value="all">Toutes sous-categories</option>
-                      {availableSubCategories.map((subCategory) => <option key={subCategory.id} value={subCategory.name}>{subCategory.name}</option>)}
-                    </select>
-                    <select {...form.register(`ingredients.${index}.article_id`)} className="input min-w-0 md:col-span-2 xl:col-span-1" onChange={(event) => {
-                      form.register(`ingredients.${index}.article_id`).onChange(event)
-                      const article = articles.find((item) => item.id === event.target.value)
-                      if (article?.unit_id) form.setValue(`ingredients.${index}.unit_id`, article.unit_id)
-                    }}>
-                      <option value="">Article</option>{filteredArticles.map((article) => <option key={article.id} value={article.id}>{article.name}</option>)}
-                    </select>
+                    <label className="block min-w-0">
+                      <span className="field-label">Categorie article</span>
+                      <select
+                        value={articleFilter.familyId}
+                        className="input mt-2 min-w-0"
+                        onChange={(event) => {
+                          updateIngredientArticleFilter(field.id, index, {
+                            familyId: event.target.value,
+                            subCategoryName: 'all',
+                          })
+                        }}
+                      >
+                        <option value="all">Toutes categories</option>
+                        {families.map((family) => <option key={family.id} value={family.id}>{family.name}</option>)}
+                      </select>
+                    </label>
+                    <label className="block min-w-0">
+                      <span className="field-label">Sous-categorie article</span>
+                      <select
+                        value={articleFilter.subCategoryName}
+                        className="input mt-2 min-w-0"
+                        onChange={(event) => {
+                          updateIngredientArticleFilter(field.id, index, {
+                            ...articleFilter,
+                            subCategoryName: event.target.value,
+                          })
+                        }}
+                      >
+                        <option value="all">Toutes sous-categories</option>
+                        {availableSubCategories.map((subCategory) => <option key={subCategory.id} value={subCategory.name}>{subCategory.name}</option>)}
+                      </select>
+                    </label>
+                    <label className="block min-w-0 md:col-span-2 xl:col-span-1">
+                      <span className="field-label">Article ingredient</span>
+                      <select {...form.register(`ingredients.${index}.article_id`)} className="input mt-2 min-w-0" onChange={(event) => {
+                        form.register(`ingredients.${index}.article_id`).onChange(event)
+                        const article = articles.find((item) => item.id === event.target.value)
+                        if (article?.unit_id) form.setValue(`ingredients.${index}.unit_id`, article.unit_id)
+                      }}>
+                        <option value="">Article</option>{filteredArticles.map((article) => <option key={article.id} value={article.id}>{article.name}</option>)}
+                      </select>
+                    </label>
                   </div>
 
                   <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-[120px_170px_150px_160px_minmax(220px,1fr)_90px]">
-                    <input {...form.register(`ingredients.${index}.quantity`, { valueAsNumber: true })} type="number" min="0" step="0.01" className="input min-w-0" placeholder="Quantite" />
-                    <select {...form.register(`ingredients.${index}.unit_id`)} className="input min-w-0"><option value="">Unite</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name} ({unit.abbreviation})</option>)}</select>
-                    <input {...form.register(`ingredients.${index}.unit_price`, { valueAsNumber: true })} type="number" min="0" step="0.01" className="input min-w-0" placeholder="Prix unitaire stock" />
+                    <label className="block min-w-0"><span className="field-label">Quantite utilisee</span><input {...form.register(`ingredients.${index}.quantity`, { valueAsNumber: true })} type="number" min="0" step="0.01" className="input mt-2 min-w-0" /></label>
+                    <label className="block min-w-0"><span className="field-label">Unite utilisee</span><select {...form.register(`ingredients.${index}.unit_id`)} className="input mt-2 min-w-0"><option value="">Unite</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name} ({unit.abbreviation})</option>)}</select></label>
+                    <label className="block min-w-0"><span className="field-label">Prix unitaire stock</span><input {...form.register(`ingredients.${index}.unit_price`, { valueAsNumber: true })} type="number" min="0" step="0.01" className="input mt-2 min-w-0" /></label>
                     {needsManualFactor ? (
                       <label className="block min-w-0">
+                        <span className="field-label">Facteur manuel</span>
                         <input
                           {...form.register(`ingredients.${index}.conversion_factor`, {
                             setValueAs: (value) => {
@@ -229,8 +239,7 @@ export function RecipeFormPage() {
                           type="number"
                           min="0"
                           step="0.000001"
-                          className="input min-w-0"
-                          placeholder="Facteur"
+                          className="input mt-2 min-w-0"
                         />
                         <span className="mt-1 block text-[11px] font-semibold text-amber-700">
                           1 {displayUnit?.abbreviation || displayUnit?.name} = facteur x {stockUnit?.abbreviation || stockUnit?.name}

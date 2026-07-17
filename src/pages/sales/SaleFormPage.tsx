@@ -345,7 +345,7 @@ export function SaleFormPage() {
                   <label><span className="field-label">Prix unitaire vente</span><input type="number" value={item.unit_price} onChange={(event) => updateItem(index, { unit_price: Number(event.target.value) })} className="input mt-2" /></label>
                   <label><span className="field-label">Remise</span><input type="number" value={item.discount} onChange={(event) => updateItem(index, { discount: Number(event.target.value) })} className="input mt-2" /></label>
                   <div><span className="field-label">Total ligne vente</span><p className="mt-2 font-bold">{lineTotal.toLocaleString('fr-FR')} Ar</p><p className="text-xs text-slate-500">{item.product_type === 'produit_brut' ? displayUnit?.abbreviation : recipe?.code}</p></div>
-                  <button type="button" onClick={() => removeItem(index)} className="btn-secondary text-red-700"><Trash2 className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => removeItem(index)} className="btn-secondary text-red-700" title="Supprimer la ligne"><Trash2 className="h-4 w-4" /></button>
                 </div>
                 {item.product_type === 'produit_brut' && (
                   <div className="grid gap-3 rounded-md bg-slate-50 p-3 text-xs font-semibold text-slate-700 md:grid-cols-[1fr_150px_1fr] md:items-end">
@@ -379,7 +379,12 @@ export function SaleFormPage() {
                     Cout stock moyen : {Number(rawPrices.get(item.article_id)?.averagePrice ?? 0).toLocaleString('fr-FR')} Ar - prix de vente propose : {Number(rawPrices.get(item.article_id)?.suggestedPrice ?? 0).toLocaleString('fr-FR')} Ar
                   </p>
                 )}
-                {Number(item.quantity_offered ?? 0) > 0 && <input value={item.offer_reason ?? ''} onChange={(event) => updateItem(index, { offer_reason: event.target.value })} className="input" placeholder="Motif obligatoire de l'offre" />}
+                {Number(item.quantity_offered ?? 0) > 0 && (
+                  <label className="block">
+                    <span className="field-label">Motif obligatoire de l'offre</span>
+                    <input value={item.offer_reason ?? ''} onChange={(event) => updateItem(index, { offer_reason: event.target.value })} className="input mt-2" />
+                  </label>
+                )}
               </div>
             )
           })}

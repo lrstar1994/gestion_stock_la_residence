@@ -601,16 +601,16 @@ export function ReceptionFormPage() {
                         {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.abbreviation}</option>)}
                       </select>
                     </label>
-                    <label className="block"><span className="field-label">Livre</span><input type="number" value={item.quantity_delivered_display ?? item.quantity_delivered} onChange={(event) => updateItem(index, computeConversionPatch(item, { quantity_delivered_display: Number(event.target.value) }))} className="input mt-2" /></label>
-                    <label className="block"><span className="field-label">Accepte</span><input type="number" value={item.quantity_accepted_display ?? item.quantity_accepted} onChange={(event) => updateItem(index, computeConversionPatch(item, { quantity_accepted_display: Number(event.target.value) }))} className="input mt-2" /></label>
-                    <Info label="Refuse" value={`${refused.toLocaleString('fr-FR')} ${displayUnit?.abbreviation ?? ''}`} />
+                    <label className="block"><span className="field-label">Quantite livree</span><input type="number" value={item.quantity_delivered_display ?? item.quantity_delivered} onChange={(event) => updateItem(index, computeConversionPatch(item, { quantity_delivered_display: Number(event.target.value) }))} className="input mt-2" /></label>
+                    <label className="block"><span className="field-label">Quantite acceptee</span><input type="number" value={item.quantity_accepted_display ?? item.quantity_accepted} onChange={(event) => updateItem(index, computeConversionPatch(item, { quantity_accepted_display: Number(event.target.value) }))} className="input mt-2" /></label>
+                    <Info label="Quantite refusee" value={`${refused.toLocaleString('fr-FR')} ${displayUnit?.abbreviation ?? ''}`} />
                     <Info label="Prix prevu saisi" value={`${Number(item.unit_price_planned ?? 0).toLocaleString('fr-FR')} Ar / ${displayUnit?.abbreviation ?? ''}`} />
                     <label className="block"><span className="field-label">Prix reel saisi</span><input type="number" value={item.unit_price_display ?? item.unit_price_real} onChange={(event) => updateItem(index, computeConversionPatch(item, { unit_price_display: Number(event.target.value) }))} className="input mt-2" /></label>
                     <Info label="Total recu saisi" value={`${acceptedTotal.toLocaleString('fr-FR')} Ar`} />
                   </div>
                   <div className="grid gap-3 rounded-md bg-white p-3 text-sm md:grid-cols-3">
                     <label className="block">
-                      <span className="field-label">Facteur</span>
+                      <span className="field-label">Facteur conversion vers stock</span>
                       <input type="number" min="0" step="0.0001" value={item.conversion_factor ?? 1} onChange={(event) => updateItem(index, computeConversionPatch(item, { conversion_factor: Number(event.target.value) }))} className="input mt-2" />
                     </label>
                     <Info label="Entree stock" value={`${Number(item.quantity_accepted ?? 0).toLocaleString('fr-FR')} ${stockUnit?.abbreviation ?? selectedArticle?.units?.abbreviation ?? ''}`} />
@@ -619,15 +619,15 @@ export function ReceptionFormPage() {
                   </div>
                 </div>
                 <div className="grid gap-3 md:grid-cols-[180px_1fr_auto]">
-                  <select value={item.quality} onChange={(event) => updateItem(index, { quality: event.target.value as typeof item.quality, has_anomaly: event.target.value !== 'conforme' || item.has_anomaly })} className="input">{qualityStatuses.map((quality) => <option key={quality} value={quality}>{qualityStatusLabels[quality]}</option>)}</select>
-                  <input value={item.quality_comment} onChange={(event) => updateItem(index, { quality_comment: event.target.value })} className="input" placeholder="Commentaire qualite" />
+                  <label className="block"><span className="field-label">Controle qualite</span><select value={item.quality} onChange={(event) => updateItem(index, { quality: event.target.value as typeof item.quality, has_anomaly: event.target.value !== 'conforme' || item.has_anomaly })} className="input mt-2">{qualityStatuses.map((quality) => <option key={quality} value={quality}>{qualityStatusLabels[quality]}</option>)}</select></label>
+                  <label className="block"><span className="field-label">Commentaire qualite</span><input value={item.quality_comment} onChange={(event) => updateItem(index, { quality_comment: event.target.value })} className="input mt-2" /></label>
                   <button type="button" onClick={() => addAnomaly(index)} className="btn-secondary">Ajouter anomalie</button>
                 </div>
                 {(item.anomalies ?? []).map((anomaly, anomalyIndex) => (
                   <div key={anomalyIndex} className="grid gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 md:grid-cols-[190px_1fr_180px]">
-                    <select value={anomaly.anomaly_type} onChange={(event) => updateAnomaly(index, anomalyIndex, { anomaly_type: event.target.value as AnomalyType })} className="input">{anomalyTypes.map((type) => <option key={type} value={type}>{anomalyTypeLabels[type]}</option>)}</select>
-                    <input value={anomaly.description} onChange={(event) => updateAnomaly(index, anomalyIndex, { description: event.target.value })} className="input" placeholder="Description anomalie" />
-                    <label className="btn-secondary cursor-pointer"><Upload className="mr-2 h-4 w-4" /> Photo<input type="file" accept="image/*" onChange={(event) => uploadPhoto(index, anomalyIndex, event.target.files?.[0])} className="hidden" /></label>
+                    <label className="block"><span className="field-label">Type anomalie</span><select value={anomaly.anomaly_type} onChange={(event) => updateAnomaly(index, anomalyIndex, { anomaly_type: event.target.value as AnomalyType })} className="input mt-2">{anomalyTypes.map((type) => <option key={type} value={type}>{anomalyTypeLabels[type]}</option>)}</select></label>
+                    <label className="block"><span className="field-label">Description anomalie</span><input value={anomaly.description} onChange={(event) => updateAnomaly(index, anomalyIndex, { description: event.target.value })} className="input mt-2" /></label>
+                    <div className="block"><span className="field-label">Photo anomalie</span><label className="btn-secondary mt-2 cursor-pointer"><Upload className="mr-2 h-4 w-4" /> Photo<input type="file" accept="image/*" onChange={(event) => uploadPhoto(index, anomalyIndex, event.target.files?.[0])} className="hidden" /></label></div>
                     {anomaly.photo_url && <a href={anomaly.photo_url} target="_blank" className="text-sm font-semibold text-[#1E3A8A] md:col-span-3">Photo ajoutee</a>}
                   </div>
                 ))}
