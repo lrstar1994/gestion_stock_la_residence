@@ -90,7 +90,12 @@ export function CashPurchaseFormPage() {
 
   const selectArticle = (index: number, articleId: string) => {
     const article = articles.find((item) => item.id === articleId)
-    updateItem(index, computeConversionPatch({ ...values.items[index], article_id: articleId, unit_id: article?.unit_id ?? '', stock_unit_id: article?.unit_id ?? '', conversion_factor: 1 }))
+    updateItem(index, computeConversionPatch(values.items[index], {
+      article_id: articleId,
+      unit_id: article?.unit_id ?? '',
+      stock_unit_id: article?.unit_id ?? '',
+      conversion_factor: undefined,
+    }))
   }
 
   const computeConversionPatch = (item: CashPurchaseItemFormValues, patch: Partial<CashPurchaseItemFormValues> = {}) => {
