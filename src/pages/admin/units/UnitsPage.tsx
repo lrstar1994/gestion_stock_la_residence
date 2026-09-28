@@ -3,7 +3,9 @@ import { Edit2, Plus, Search, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { createUnit, deleteUnit, listUnits, updateUnit } from '../../../api/modules/catalog.api'
+import { createUnit, deleteUnit, listUnits, setReferentialActive, updateUnit } from '../../../api/modules/catalog.api'
+import { getMyPinStatus } from '../../../api/modules/sensitiveActions.api'
+import { SensitiveActionModal } from '../../../components/SensitiveActionModal'
 import { useAuth } from '../../../hooks/useAuth'
 import { unitSchema } from '../../../lib/catalog'
 import type { Unit, UnitFormValues } from '../../../lib/catalog'
@@ -14,6 +16,9 @@ export function UnitsPage() {
   const [search, setSearch] = useState('')
   const [editingUnit, setEditingUnit] = useState<Unit | null>(null)
   const [loading, setLoading] = useState(true)
+  const [pinDefined, setPinDefined] = useState(false)
+  const [unitToDelete, setUnitToDelete] = useState<Unit | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const form = useForm<UnitFormValues>({
     resolver: zodResolver(unitSchema),
     defaultValues: { name: '', abbreviation: '' },
@@ -22,7 +27,7 @@ export function UnitsPage() {
   const loadUnits = useCallback(async () => {
     setLoading(true)
     try {
-      setUnits(await listUnits(search))
+      setUnits(await listUnits(search, true))
     } catch {
       toast.error('Une erreur est survenue. Veuillez reessayer.')
     } finally {
@@ -33,6 +38,10 @@ export function UnitsPage() {
   useEffect(() => {
     loadUnits()
   }, [loadUnits])
+
+  useEffect(() => {
+    getMyPinStatus().then((status) => setPinDefined(status.pin_defined)).catch(() => setPinDefined(false))
+  }, [])
 
   const startEdit = (unit: Unit) => {
     setEditingUnit(unit)
@@ -60,19 +69,7 @@ export function UnitsPage() {
     }
   }
 
-  const handleDelete = async (unit: Unit) => {
-    if (!window.confirm('Voulez-vous vraiment supprimer cette unite ?')) {
-      return
-    }
-
-    try {
-      await deleteUnit(unit.id)
-      toast.success('Unite supprimee avec succes')
-      await loadUnits()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Une erreur est survenue. Veuillez reessayer.')
-    }
-  }
+  const handleDelete = (unit: Unit) => setUnitToDelete(unit)
 
   return (
     <div className="space-y-6">
@@ -138,6 +135,38 @@ export function UnitsPage() {
           )}
         </div>
       </section>
+      <SensitiveActionModal
+        open={Boolean(unitToDelete)}
+        title={unitToDelete?.is_active === false ? 'Réactiver l’unité' : (unitToDelete?.articles_count ?? 0) > 0 ? 'Désactiver l’unité utilisée' : 'Supprimer une unité inutilisée'}
+        description={(unitToDelete?.articles_count ?? 0) > 0 ? 'L’unité reste disponible dans les historiques existants.' : 'Toute unité liée à un article, un mouvement ou un inventaire est protégée.'}
+        permissionLabel={unitToDelete?.is_active === false ? 'referentials.reactivate' : (unitToDelete?.articles_count ?? 0) > 0 ? 'referentials.deactivate' : 'referentials.delete_unused'}
+        pinDefined={pinDefined}
+        requireReason
+        busy={deleting}
+        onCancel={() => setUnitToDelete(null)}
+        onConfirm={async ({ pin, reason }) => {
+          if (!unitToDelete) return
+          setDeleting(true)
+          try {
+            if (unitToDelete.is_active === false) {
+              await setReferentialActive('unit', unitToDelete.id, true, pin, reason)
+              toast.success('Unité réactivée et auditée.')
+            } else if ((unitToDelete.articles_count ?? 0) > 0) {
+              await setReferentialActive('unit', unitToDelete.id, false, pin, reason)
+              toast.success('Unité désactivée et auditée.')
+            } else {
+              await deleteUnit(unitToDelete.id, pin, reason)
+              toast.success('Unité supprimée et auditée.')
+            }
+            setUnitToDelete(null)
+            await loadUnits()
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Suppression impossible')
+          } finally {
+            setDeleting(false)
+          }
+        }}
+      />
     </div>
   )
 }

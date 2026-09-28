@@ -1,4 +1,4 @@
-import { ArrowRight, Banknote, ClipboardList, FileCheck2, ShoppingCart } from 'lucide-react'
+import { ArrowRight, Banknote, CircleDollarSign, ClipboardList, FileCheck2, ShoppingCart } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
@@ -21,8 +21,18 @@ export function PurchaseWizardPage() {
   const canCreateNeed = canCreatePurchaseNeeds(profile?.role)
   const canCreateCash = canCreateCashPurchases(profile?.role)
   const canCreateOrder = canCreatePurchaseOrders(profile?.role)
+  const canCreateDisbursement = ['direction', 'caisse', 'comptabilite'].includes(profile?.role ?? '')
 
   const choices: PurchaseChoice[] = [
+    {
+      title: 'Decaissement hors achat',
+      description: "Sortir de l'argent sans achat ni reception de marchandises.",
+      example: 'Exemple : avance au personnel, remboursement, frais administratifs ou transport.',
+      to: '/cash-disbursements/new',
+      action: 'Nouveau decaissement',
+      enabled: canCreateDisbursement,
+      icon: <CircleDollarSign className="h-6 w-6" />,
+    },
     {
       title: 'Demander un achat',
       description: "J'ai besoin de quelque chose, mais l'achat n'est pas encore organise.",
@@ -62,7 +72,7 @@ export function PurchaseWizardPage() {
         </p>
       </header>
 
-      <section className="grid gap-4 lg:grid-cols-3">
+      <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
         {choices.map((choice) => (
           <PurchaseChoiceCard key={choice.title} choice={choice} />
         ))}
@@ -92,11 +102,12 @@ export function PurchaseWizardPage() {
       </section>
 
       <section className="surface p-5">
-        <h2 className="text-lg font-bold text-slate-950">Les trois circuits restent separes</h2>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <h2 className="text-lg font-bold text-slate-950">Les circuits restent separes</h2>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <Info title="Besoin d'achat" text="On exprime un besoin. L'achat n'est pas encore organise." />
           <Info title="Achat especes" text="Une personne achete directement avec des especes remises." />
           <Info title="Commande fournisseur" text="Une commande structuree est envoyee a un fournisseur." />
+          <Info title="Decaissement hors achat" text="Une sortie d'argent sans reception ni mouvement de stock." />
         </div>
       </section>
     </div>

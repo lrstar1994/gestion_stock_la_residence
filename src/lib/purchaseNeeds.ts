@@ -11,6 +11,9 @@ export const needCalculationSources = ['saisie_manuelle', 'seuil_stock', 'besoin
 export const requestingServices = ['direction', 'cuisine', 'fiche_technique', 'magasin', 'achats', 'maintenance', 'comptabilite', 'caisse', 'point_vente', 'hebergement', 'administration', 'autre'] as const
 export const needUrgencies = ['normal', 'urgent', 'tres_urgent'] as const
 export const needStatuses = ['a_faire', 'en_cours', 'valide', 'regroupe', 'refuse', 'annule'] as const
+export const businessOrigins = ['renouvellement_stock', 'production_fiche', 'mise_en_place', 'opportunite_achat'] as const
+export const supplyDifficulties = ['facile', 'difficile'] as const
+export const workflowStatuses = ['draft', 'submitted', 'direction_review', 'approved', 'refused', 'to_procure'] as const
 
 export type NeedOrigin = (typeof needOrigins)[number]
 export type NeedType = (typeof needTypes)[number]
@@ -19,6 +22,45 @@ export type NeedCalculationSource = (typeof needCalculationSources)[number]
 export type RequestingService = (typeof requestingServices)[number]
 export type NeedUrgency = (typeof needUrgencies)[number]
 export type NeedStatus = (typeof needStatuses)[number]
+export type BusinessOrigin = (typeof businessOrigins)[number]
+export type SupplyDifficulty = (typeof supplyDifficulties)[number]
+export type WorkflowStatus = (typeof workflowStatuses)[number]
+
+export type PurchaseIntendedUse = {
+  id: string
+  code: string
+  label: string
+  is_active?: boolean
+  sort_order?: number | null
+}
+
+export const businessOriginLabels: Record<BusinessOrigin, string> = {
+  renouvellement_stock: 'Renouvellement de stock',
+  production_fiche: 'Production / fiche technique',
+  mise_en_place: 'Mise en place',
+  opportunite_achat: "Opportunité d'achat",
+}
+
+export const supplyDifficultyLabels: Record<SupplyDifficulty, string> = {
+  facile: 'Facile à approvisionner',
+  difficile: 'Difficile à approvisionner',
+}
+
+export const workflowStatusLabels: Record<WorkflowStatus, string> = {
+  draft: 'Brouillon',
+  submitted: 'Soumis',
+  direction_review: 'En décision Direction',
+  approved: 'Autorisé',
+  refused: 'Refusé',
+  to_procure: 'À approvisionner',
+}
+export const taxTreatments = ['ht_add_vat', 'ttc_included', 'no_vat'] as const
+export type TaxTreatment = (typeof taxTreatments)[number]
+export const taxTreatmentLabels: Record<TaxTreatment, string> = {
+  ht_add_vat: 'Prix HT — TVA à ajouter',
+  ttc_included: 'Prix TTC — TVA comprise',
+  no_vat: 'Sans TVA — aucune TVA à ajouter',
+}
 
 export const needOriginLabels: Record<NeedOrigin, string> = {
   evenement: 'Evenement',
@@ -106,9 +148,11 @@ export type PurchaseNeedGlobal = {
   estimated_price: number | null
   price_input_amount: number | null
   price_input_is_tax_excluded: boolean | null
+  tax_treatment: TaxTreatment | null
   vat_rate: number | null
   estimated_vat_amount: number | null
   estimated_price_ttc: number | null
+  estimated_payable_amount: number | null
   estimated_cost: number
   budget: number | null
   requested_date: string | null
@@ -125,12 +169,34 @@ export type PurchaseNeedGlobal = {
   updated_at: string
   created_by: string
   updated_by: string | null
+  business_origin?: BusinessOrigin | null
+  intended_use_id?: string | null
+  supply_difficulty?: SupplyDifficulty | null
+  justification?: string | null
+  workflow_status?: WorkflowStatus | null
+  processing?: {
+    kind: 'cash' | 'supplier'
+    reference: string | null
+    status: string | null
+    cashStatus?: string | null
+    receptionStatus?: string | null
+    stockEntryStatus?: string | null
+  } | null
   articles?: Pick<Article, 'id' | 'name' | 'default_supplier' | 'min_stock'> & { families?: Pick<Family, 'id' | 'name'> }
   units?: Pick<Unit, 'id' | 'name' | 'abbreviation'>
   suppliers?: Pick<Supplier, 'id' | 'name'>
   events?: Pick<Event, 'id' | 'name'>
+  intended_uses?: Pick<PurchaseIntendedUse, 'id' | 'code' | 'label'> | null
   requester?: Pick<Profile, 'id' | 'full_name' | 'role'>
   validator?: Pick<Profile, 'id' | 'full_name'>
+}
+
+/**
+ * Libellé métier de l'utilisation prévue. Il reste distinct du service
+ * demandeur, qui décrit l'émetteur historique du besoin.
+ */
+export function getPurchaseNeedIntendedUseLabel(need: Pick<PurchaseNeedGlobal, 'intended_uses'>) {
+  return need.intended_uses?.label ?? '—'
 }
 
 export type PurchaseGroup = {
@@ -158,11 +224,16 @@ export const purchaseNeedSchema = z.object({
   estimated_price: z.number().min(0).optional(),
   price_input_amount: z.number().min(0).optional(),
   price_input_is_tax_excluded: z.boolean().optional(),
+  tax_treatment: z.enum(taxTreatments),
   vat_rate: z.number().min(0).optional(),
   budget: z.number().min(0, 'Le budget ne peut pas etre negatif').optional(),
   requested_date: z.string().optional(),
   comment: z.string().optional(),
   supplier_id: z.string().optional(),
+  business_origin: z.enum(businessOrigins).optional(),
+  intended_use_id: z.string().optional(),
+  supply_difficulty: z.enum(supplyDifficulties).optional(),
+  justification: z.string().optional(),
 })
 
 export type PurchaseNeedFormValues = z.infer<typeof purchaseNeedSchema>

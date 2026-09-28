@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { getDirectionDashboard } from '../../api/modules/dashboard.api'
 import type { DashboardPeriod, DateRange, DirectionDashboard } from '../../lib/dashboard'
@@ -10,13 +10,18 @@ export function useDirectionDashboard() {
   const [range, setRange] = useState<DateRange>({ from: today.slice(0, 8) + '01', to: today })
   const [dashboard, setDashboard] = useState<DirectionDashboard | null>(null)
   const [loading, setLoading] = useState(true)
+  const errorShown = useRef(false)
 
   const load = useCallback(async () => {
     try {
       setLoading(true)
       setDashboard(await getDirectionDashboard({ period, from: range.from, to: range.to }))
+      errorShown.current = false
     } catch {
-      toast.error('Impossible de charger le tableau de bord.')
+      if (!errorShown.current) {
+        toast.error('Impossible de charger le tableau de bord.')
+        errorShown.current = true
+      }
     } finally {
       setLoading(false)
     }

@@ -1,9 +1,11 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Edit2, Plus, Search, Trash2 } from 'lucide-react'
+import { Edit2, GitMerge, Plus, Search, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { createFamily, deleteFamily, listFamilies, updateFamily } from '../../../api/modules/catalog.api'
+import { createFamily, deleteFamily, listFamilies, mergeFamilies, setReferentialActive, updateFamily } from '../../../api/modules/catalog.api'
+import { getMyPinStatus } from '../../../api/modules/sensitiveActions.api'
+import { SensitiveActionModal } from '../../../components/SensitiveActionModal'
 import { useAuth } from '../../../hooks/useAuth'
 import { familySchema } from '../../../lib/catalog'
 import type { Family, FamilyFormValues } from '../../../lib/catalog'
@@ -14,6 +16,12 @@ export function FamiliesPage() {
   const [search, setSearch] = useState('')
   const [editingFamily, setEditingFamily] = useState<Family | null>(null)
   const [loading, setLoading] = useState(true)
+  const [pinDefined, setPinDefined] = useState(false)
+  const [familyToDelete, setFamilyToDelete] = useState<Family | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [familyToMerge, setFamilyToMerge] = useState<Family | null>(null)
+  const [mergeTargetId, setMergeTargetId] = useState('')
+  const [merging, setMerging] = useState(false)
   const form = useForm<FamilyFormValues>({
     resolver: zodResolver(familySchema),
     defaultValues: { name: '', description: '' },
@@ -22,7 +30,7 @@ export function FamiliesPage() {
   const loadFamilies = useCallback(async () => {
     setLoading(true)
     try {
-      setFamilies(await listFamilies(search))
+      setFamilies(await listFamilies(search, true))
     } catch {
       toast.error('Une erreur est survenue. Veuillez reessayer.')
     } finally {
@@ -33,6 +41,10 @@ export function FamiliesPage() {
   useEffect(() => {
     loadFamilies()
   }, [loadFamilies])
+
+  useEffect(() => {
+    getMyPinStatus().then((status) => setPinDefined(status.pin_defined)).catch(() => setPinDefined(false))
+  }, [])
 
   const startEdit = (family: Family) => {
     setEditingFamily(family)
@@ -60,19 +72,7 @@ export function FamiliesPage() {
     }
   }
 
-  const handleDelete = async (family: Family) => {
-    if (!window.confirm('Voulez-vous vraiment supprimer cette categorie ?')) {
-      return
-    }
-
-    try {
-      await deleteFamily(family.id)
-      toast.success('Categorie supprimee avec succes')
-      await loadFamilies()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Une erreur est survenue. Veuillez reessayer.')
-    }
-  }
+  const handleDelete = (family: Family) => setFamilyToDelete(family)
 
   return (
     <div className="space-y-6">
@@ -130,6 +130,9 @@ export function FamiliesPage() {
                     <button type="button" onClick={() => startEdit(family)} className="btn-secondary px-3 py-2" aria-label="Modifier">
                       <Edit2 className="h-4 w-4" />
                     </button>
+                    <button type="button" onClick={() => { setFamilyToMerge(family); setMergeTargetId('') }} className="btn-secondary px-3 py-2" aria-label="Fusionner">
+                      <GitMerge className="h-4 w-4" />
+                    </button>
                     <button type="button" onClick={() => handleDelete(family)} className="btn-secondary px-3 py-2 text-red-700" aria-label="Supprimer">
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -141,6 +144,76 @@ export function FamiliesPage() {
           )}
         </div>
       </section>
+      <SensitiveActionModal
+        open={Boolean(familyToDelete)}
+        title={familyToDelete?.is_active === false ? 'Réactiver la catégorie' : (familyToDelete?.articles_count ?? 0) > 0 ? 'Désactiver la catégorie utilisée' : 'Supprimer une catégorie inutilisée'}
+        description={(familyToDelete?.articles_count ?? 0) > 0 ? 'La catégorie restera visible dans l’historique mais ne sera plus proposée pour les nouvelles créations.' : 'La base refuse toute suppression physique si la catégorie est utilisée.'}
+        permissionLabel={familyToDelete?.is_active === false ? 'referentials.reactivate' : (familyToDelete?.articles_count ?? 0) > 0 ? 'referentials.deactivate' : 'referentials.delete_unused'}
+        pinDefined={pinDefined}
+        requireReason
+        busy={deleting}
+        onCancel={() => setFamilyToDelete(null)}
+        onConfirm={async ({ pin, reason }) => {
+          if (!familyToDelete) return
+          setDeleting(true)
+          try {
+            if (familyToDelete.is_active === false) {
+              await setReferentialActive('family', familyToDelete.id, true, pin, reason)
+              toast.success('Catégorie réactivée et auditée.')
+            } else if ((familyToDelete.articles_count ?? 0) > 0) {
+              await setReferentialActive('family', familyToDelete.id, false, pin, reason)
+              toast.success('Catégorie désactivée et auditée.')
+            } else {
+              await deleteFamily(familyToDelete.id, pin, reason)
+              toast.success('Catégorie supprimée et auditée.')
+            }
+            setFamilyToDelete(null)
+            await loadFamilies()
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Suppression impossible')
+          } finally {
+            setDeleting(false)
+          }
+        }}
+      />
+      <SensitiveActionModal
+        open={Boolean(familyToMerge)}
+        title="Fusionner deux catégories"
+        description="Les articles et sous-catégories de la source seront rattachés à la cible ; la source sera désactivée et l’action auditée."
+        permissionLabel="referentials.merge"
+        pinDefined={pinDefined}
+        requireReason
+        busy={merging}
+        onCancel={() => { setFamilyToMerge(null); setMergeTargetId('') }}
+        onConfirm={async ({ pin, reason }) => {
+          if (!familyToMerge || !mergeTargetId) {
+            toast.error('Sélectionnez une catégorie cible.')
+            return
+          }
+          setMerging(true)
+          try {
+            await mergeFamilies(familyToMerge.id, mergeTargetId, pin, reason)
+            toast.success('Catégories fusionnées et action auditée.')
+            setFamilyToMerge(null)
+            setMergeTargetId('')
+            await loadFamilies()
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Fusion impossible')
+          } finally {
+            setMerging(false)
+          }
+        }}
+      >
+        <label className="mt-4 block">
+          <span className="field-label">Catégorie cible</span>
+          <select value={mergeTargetId} onChange={(event) => setMergeTargetId(event.target.value)} className="input mt-2">
+            <option value="">Sélectionner</option>
+            {families.filter((family) => family.id !== familyToMerge?.id && family.is_active !== false).map((family) => (
+              <option key={family.id} value={family.id}>{family.name}</option>
+            ))}
+          </select>
+        </label>
+      </SensitiveActionModal>
     </div>
   )
 }

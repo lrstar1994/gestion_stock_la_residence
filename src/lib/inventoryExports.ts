@@ -20,13 +20,13 @@ export function exportInventoriesToExcel(rows: Inventory[]) {
 
 export function exportInventoryDetailToExcel(inventory: Inventory) {
   const worksheet = XLSX.utils.json_to_sheet((inventory.inventory_items ?? []).map((item) => ({
-    Article: item.articles?.name,
-    Theorique: Number(item.theoretical_quantity ?? 0),
-    Compte: Number(item.counted_quantity ?? 0),
-    Ecart: Number(item.difference ?? 0),
-    Unite: item.units?.abbreviation,
-    Prix: Number(item.unit_price ?? 0),
-    'Ecart valeur': Number(item.value_difference ?? 0),
+    Article: item.articles?.name ?? "Article non renseigne",
+    Théorique: Number(item.theoretical_quantity ?? 0),
+    Compté: item.counted_quantity === null ? 'Non compté' : Number(item.counted_quantity),
+    Écart: item.counted_quantity === null ? '' : Number(item.difference ?? 0),
+    Unité: item.units?.abbreviation,
+    Coût: item.unit_price == null ? 'Indisponible' : Number(item.unit_price),
+    'Valeur écart': item.unit_price == null ? 'Indisponible' : Number(item.value_difference ?? 0),
     Motif: item.reason ?? '',
     Mouvement: item.stock_movements?.movement_reference ?? '',
   })))
@@ -44,13 +44,13 @@ export function exportInventoryDifferencesToExcel(inventory: Inventory, signific
     return theoretical === 0 || (difference / theoretical) * 100 > 5
   })
   const worksheet = XLSX.utils.json_to_sheet(rows.map((item) => ({
-    Article: item.articles?.name,
-    Theorique: Number(item.theoretical_quantity ?? 0),
-    Compte: Number(item.counted_quantity ?? 0),
-    Ecart: Number(item.difference ?? 0),
-    Unite: item.units?.abbreviation,
-    Prix: Number(item.unit_price ?? 0),
-    'Ecart valeur': Number(item.value_difference ?? 0),
+    Article: item.articles?.name ?? "Article non renseigne",
+    Théorique: Number(item.theoretical_quantity ?? 0),
+    Compté: item.counted_quantity === null ? 'Non compté' : Number(item.counted_quantity),
+    Écart: item.counted_quantity === null ? '' : Number(item.difference ?? 0),
+    Unité: item.units?.abbreviation,
+    Coût: item.unit_price == null ? 'Indisponible' : Number(item.unit_price),
+    'Valeur écart': item.unit_price == null ? 'Indisponible' : Number(item.value_difference ?? 0),
     Motif: item.reason ?? '',
   })))
   const workbook = XLSX.utils.book_new()

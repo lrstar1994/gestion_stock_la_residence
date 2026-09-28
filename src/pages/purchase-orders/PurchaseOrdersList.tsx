@@ -64,10 +64,12 @@ export function PurchaseOrdersList() {
         </div>
       </header>
 
+      <div className="rounded-md border-2 border-orange-400 bg-yellow-100 px-4 py-3 text-sm font-black text-orange-900">DIAGNOSTIC ACTIF — PurchaseOrdersList.tsx modifié</div>
+
       <section className="grid gap-4 md:grid-cols-4">
         <Metric label="Brouillons" value={String(dashboard.draft)} />
         <Metric label="A envoyer" value={String(dashboard.toSend)} />
-        <Metric label="Reception attendue" value={String(dashboard.waiting)} />
+        <Metric label="Reception marchandises attendue" value={String(dashboard.waiting)} />
         <Metric label="Montant affiche" value={`${dashboard.total.toLocaleString('fr-FR')} Ar`} />
       </section>
 
@@ -83,15 +85,15 @@ export function PurchaseOrdersList() {
         </div>
         <div className="divide-y divide-slate-200">
           {orders.map((order) => (
-            <Link key={order.id} to={`/purchase-orders/${order.id}`} className="grid gap-3 px-5 py-4 transition hover:bg-slate-50 xl:grid-cols-[150px_1fr_140px_150px_150px_140px_150px] xl:items-center">
-              <span className="font-bold text-[#1E3A8A]">{order.reference}</span>
+            <div key={order.id} className="grid gap-3 px-5 py-4 transition hover:bg-slate-50 xl:grid-cols-[150px_1fr_140px_150px_150px_140px_150px] xl:items-center">
+              <div><Link to={`/purchase-orders/${order.id}`} className="font-bold text-[#1E3A8A] underline" aria-label={`Ouvrir la commande ${order.reference}`}>{order.reference}</Link><p className="text-[10px] text-slate-500">DEBUG LISTE : id = {order.id} · reference = {order.reference} · statut = {order.status} · source = listPurchaseOrders</p></div>
               <span><span className="block font-semibold">{order.suppliers?.name}</span><span className="text-xs text-slate-500">{order.supplier_reference || 'Sans reference fournisseur'}</span></span>
               <span>{new Date(order.order_date).toLocaleDateString('fr-FR')}</span>
               <span>{new Date(order.delivery_date).toLocaleDateString('fr-FR')}</span>
               <span>{Number(order.total_amount ?? 0).toLocaleString('fr-FR')} Ar</span>
               <span>{order.creator?.full_name || '-'}</span>
               <Badge status={order.status} />
-            </Link>
+            </div>
           ))}
           {orders.length === 0 && <p className="p-5 text-sm text-slate-600">Aucune commande fournisseur.</p>}
         </div>

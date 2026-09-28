@@ -1,12 +1,14 @@
-import { Download, FileText } from 'lucide-react'
+﻿import { Download, FileText } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { ChartCard, DataTable, DonutChart, HorizontalBars, KpiCard, LineChart } from '../components/dashboard/DashboardWidgets'
 import { exportDashboardToExcel, exportDashboardToPdf } from '../lib/dashboardExports'
 import { formatMoney, formatNumber, formatPercent } from '../lib/dashboard'
 import { DashboardControls } from './dashboard/DashboardControls'
+import { useAuth } from '../hooks/useAuth'
+import { DashboardCaisse } from './dashboard/DashboardCaisse'
 import { useDirectionDashboard } from './dashboard/useDirectionDashboard'
 
-export function Dashboard() {
+export function DashboardDirection() {
   const { dashboard, loading, period, range, setPeriod, setRange, load } = useDirectionDashboard()
 
   if (loading && !dashboard) return <p className="surface p-6 text-sm text-slate-600">Chargement du tableau de bord...</p>
@@ -39,7 +41,7 @@ export function Dashboard() {
         <KpiCard label="CA du mois" value={formatMoney(dashboard.kpis.monthlyRevenue)} />
         <KpiCard label="Marge brute estimee" value={formatMoney(dashboard.kpis.estimatedGrossMargin)} />
         <KpiCard label="Taux de marge moyen" value={formatPercent(dashboard.kpis.averageMarginRate)} />
-        <KpiCard label="Receptions avec ecarts" value={formatNumber(dashboard.kpis.receptionsWithAnomalies)} />
+        <KpiCard label="Receptions marchandises avec ecarts" value={formatNumber(dashboard.kpis.receptionsWithAnomalies)} />
         <KpiCard label="Alertes actives" value={formatNumber(dashboard.alerts.pendingPurchaseNeeds + dashboard.alerts.pendingCashValidations + dashboard.alerts.ordersToReceive + dashboard.alerts.overdueInvoices)} />
       </section>
 
@@ -66,8 +68,15 @@ export function Dashboard() {
 
       <section className="grid gap-6 xl:grid-cols-2">
         <ChartCard title="Decaissements en cours"><DataTable rows={dashboard.purchases.activeCashAdvances} empty="Aucun decaissement en cours." /></ChartCard>
-        <ChartCard title="Receptions avec ecarts"><DataTable rows={dashboard.receptions.withAnomalies} empty="Aucune reception avec ecart." /></ChartCard>
+        <ChartCard title="Receptions marchandises avec ecarts"><DataTable rows={dashboard.receptions.withAnomalies} empty="Aucune reception marchandises avec ecart." /></ChartCard>
       </section>
     </div>
   )
+}
+
+export function Dashboard() {
+  const { profile } = useAuth()
+  if (profile?.role === 'caisse') return <DashboardCaisse />
+  if (profile?.role !== 'direction') return <section className="surface p-6"><h1 className="text-xl font-bold">Tableau de bord non configuré</h1><p className="mt-2 text-sm text-slate-600">Votre dashboard spécifique n’est pas encore disponible pour ce rôle.</p></section>
+  return <DashboardDirection />
 }

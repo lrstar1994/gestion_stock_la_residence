@@ -4,8 +4,8 @@ import toast from 'react-hot-toast'
 import { Link } from 'react-router-dom'
 import { listArticles, listFamilies } from '../../api/modules/catalog.api'
 import { useAuth } from '../../hooks/useAuth'
-import { articleStatusLabels, canManageArticles } from '../../lib/catalog'
-import type { Article, ArticleStatus, Family } from '../../lib/catalog'
+import { articleNatureLabels, articleNatures, articleStatusLabels, canManageArticles } from '../../lib/catalog'
+import type { Article, ArticleNature, ArticleStatus, Family } from '../../lib/catalog'
 
 const statusClasses: Record<ArticleStatus, string> = {
   active: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
@@ -14,7 +14,7 @@ const statusClasses: Record<ArticleStatus, string> = {
 }
 
 const articleGridClass =
-  'grid min-w-[1380px] grid-cols-[1.3fr_1fr_110px_1.1fr_110px_130px_130px_140px_140px] items-center gap-4'
+  'grid min-w-[1580px] grid-cols-[1.3fr_1fr_120px_100px_100px_1.1fr_100px_120px_120px_130px_140px] items-center gap-4'
 
 export function ArticlesList() {
   const { profile } = useAuth()
@@ -24,13 +24,15 @@ export function ArticlesList() {
   const [search, setSearch] = useState('')
   const [familyId, setFamilyId] = useState('all')
   const [status, setStatus] = useState<ArticleStatus | 'all'>('all')
+  const [nature, setNature] = useState<ArticleNature | 'all'>('all')
+  const [stockable, setStockable] = useState<'all' | 'yes' | 'no'>('all')
   const [pageSize, setPageSize] = useState(10)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
-  const filters = useMemo(() => ({ search, familyId, status, page, pageSize }), [familyId, page, pageSize, search, status])
+  const filters = useMemo(() => ({ search, familyId, status, nature, stockable: stockable === 'all' ? undefined : stockable === 'yes', page, pageSize }), [familyId, nature, page, pageSize, search, status, stockable])
 
   useEffect(() => {
     listFamilies().then(setFamilies).catch(() => toast.error('Une erreur est survenue. Veuillez reessayer.'))
@@ -58,7 +60,7 @@ export function ArticlesList() {
         <div>
           <p className="eyebrow">Catalogue</p>
           <h1 className="page-title mt-2">Articles</h1>
-          <p className="mt-2 text-sm text-slate-600">Base des produits suivis dans le stock.</p>
+          <p className="mt-2 text-sm text-slate-600">Référentiel central des articles stockables et non stockables.</p>
         </div>
         {canEdit && (
           <Link to="/articles/new" className="btn-primary">
@@ -69,23 +71,32 @@ export function ArticlesList() {
       </header>
 
       <section className="surface p-4">
-        <div className="grid gap-3 lg:grid-cols-[1fr_220px_180px_150px]">
+        <div className="grid gap-3 lg:grid-cols-[1fr_200px_170px_170px_160px_130px]">
           <label className="relative block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               value={search}
               onChange={(event) => resetPage(() => setSearch(event.target.value))}
               className="input pl-9"
-              placeholder="Rechercher par nom ou categorie"
+              placeholder="Rechercher par nom ou catégorie"
             />
           </label>
           <select value={familyId} onChange={(event) => resetPage(() => setFamilyId(event.target.value))} className="input">
-            <option value="all">Toutes les categories</option>
+            <option value="all">Toutes les catégories</option>
             {families.map((family) => (
               <option key={family.id} value={family.id}>
                 {family.name}
               </option>
             ))}
+          </select>
+          <select value={nature} onChange={(event) => resetPage(() => setNature(event.target.value as ArticleNature | 'all'))} className="input">
+            <option value="all">Toutes les natures</option>
+            {articleNatures.map((value) => <option key={value} value={value}>{articleNatureLabels[value]}</option>)}
+          </select>
+          <select value={stockable} onChange={(event) => resetPage(() => setStockable(event.target.value as typeof stockable))} className="input">
+            <option value="all">Stockables + services</option>
+            <option value="yes">Stockable</option>
+            <option value="no">Non stockable</option>
           </select>
           <select value={status} onChange={(event) => resetPage(() => setStatus(event.target.value as ArticleStatus | 'all'))} className="input">
             <option value="all">Actifs + inactifs</option>
@@ -105,8 +116,10 @@ export function ArticlesList() {
         <div className="overflow-x-auto">
           <div className={`${articleGridClass} border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500`}>
             <span>Nom</span>
-            <span>Categorie</span>
-            <span>Unite</span>
+            <span>Catégorie</span>
+            <span>Nature</span>
+            <span>Stockable</span>
+            <span>Unité</span>
             <span>Fournisseur</span>
             <span>Stock min.</span>
             <span>Statut</span>
@@ -116,18 +129,20 @@ export function ArticlesList() {
           </div>
 
           {loading ? (
-            <p className="min-w-[1380px] p-6 text-sm text-slate-600">Chargement...</p>
+            <p className="min-w-[1580px] p-6 text-sm text-slate-600">Chargement...</p>
           ) : articles.length === 0 ? (
-            <p className="min-w-[1380px] p-6 text-sm text-slate-600">Aucun article trouve.</p>
+            <p className="min-w-[1580px] p-6 text-sm text-slate-600">Aucun article trouvé.</p>
           ) : (
             <div className="divide-y divide-slate-200">
               {articles.map((article) => (
                 <article key={article.id} className={`${articleGridClass} px-5 py-4 transition hover:bg-slate-50`}>
                   <div>
                     <p className="font-semibold text-slate-950">{article.name}</p>
-                    <p className="mt-1 text-sm text-slate-500">{article.packaging || 'Conditionnement non renseigne'}</p>
+                    <p className="mt-1 text-sm text-slate-500">{article.packaging || 'Conditionnement non renseigné'}</p>
                   </div>
                   <p className="text-sm text-slate-700">{article.families?.name ?? '-'}</p>
+                  <p className="text-sm text-slate-700">{articleNatureLabels[article.nature ?? 'autre']}</p>
+                  <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${article.stockable ? 'bg-blue-50 text-blue-800' : 'bg-slate-100 text-slate-700'}`}>{article.stockable ? 'Oui' : 'Non'}</span>
                   <p className="text-sm font-semibold text-[#1E3A8A]">{article.units?.abbreviation ?? '-'}</p>
                   <p className="truncate text-sm text-slate-700">{article.default_supplier || '-'}</p>
                   <p className="text-sm text-slate-700">{article.min_stock ?? 0}</p>
@@ -164,7 +179,7 @@ export function ArticlesList() {
         </p>
         <div className="flex gap-2">
           <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1} className="btn-secondary">
-            Precedent
+            Précédent
           </button>
           <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages} className="btn-secondary">
             Suivant

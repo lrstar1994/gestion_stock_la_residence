@@ -89,6 +89,9 @@ export type StockRow = {
   stock_value?: number | null
   articles?: Pick<Article, 'id' | 'name' | 'min_stock'> & { families?: Pick<Family, 'id' | 'name'>; units?: Pick<Unit, 'id' | 'name' | 'abbreviation'> }
   locations?: Array<{ location_id: string; location_name: string; quantity: number; stock_value?: number | null }>
+  initialization_status?: 'confirmed' | 'unconfirmed' | 'to_initialize'
+  last_movement_date?: string | null
+  valuation_status?: 'available' | 'missing_cost' | 'partial'
 }
 
 export type StockArticleDetail = {

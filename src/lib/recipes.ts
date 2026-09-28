@@ -3,14 +3,19 @@ import type { Article, Unit } from './catalog'
 import type { Profile, UserRole } from './validation'
 
 export const recipeTypes = ['EF', 'EC', 'PL', 'ACC', 'DS', 'PC-S', 'PC-SU', 'CO-S', 'CO-SU', 'SAU', 'PREP', 'BOI', 'BF'] as const
+export const creatableRecipeTypes = recipeTypes.filter((type) => type !== 'BF') as Exclude<RecipeType, 'BF'>[]
 export const recipeMainIngredients = ['POU', 'ZEB', 'POR', 'POI', 'CRV', 'OEU', 'LEG', 'FEC', 'FRO', 'FRU', 'CHO', 'VAN', 'MIX'] as const
 export const recipeStatuses = ['brouillon', 'simulation', 'en_attente', 'validee', 'archived'] as const
+export const recipeYieldModes = ['portions', 'rendement_produit'] as const
+export const ingredientQuantityModes = ['brut', 'net'] as const
 export const recipeTags = ['economique', 'festif', 'malagasy', 'enfant', 'vegetarien', 'tres_apprecie', 'ameliorer'] as const
 export const pendingIngredientStatuses = ['pending', 'resolved', 'ambiguous', 'new_created'] as const
 
 export type RecipeType = (typeof recipeTypes)[number]
 export type RecipeMainIngredient = (typeof recipeMainIngredients)[number]
 export type RecipeStatus = (typeof recipeStatuses)[number]
+export type RecipeYieldMode = (typeof recipeYieldModes)[number]
+export type IngredientQuantityMode = (typeof ingredientQuantityModes)[number]
 export type RecipeTag = (typeof recipeTags)[number]
 export type PendingIngredientStatus = (typeof pendingIngredientStatuses)[number]
 
@@ -91,9 +96,53 @@ export type Recipe = {
   validated_at: string | null
   archived_at: string | null
   parent_version_id: string | null
+  yield_mode?: RecipeYieldMode
+  yield_quantity?: number | null
+  yield_unit_id?: string | null
+  material_cost_ht?: number
+  theoretical_sale_price_ttc?: number
+  retained_sale_price_ttc?: number | null
+  retained_sale_price_reason?: string | null
+  workflow_status?: string | null
+  cost_status?: 'PROVISOIRE' | 'CONFIRME' | 'A_REVOIR' | null
+  cost_review_task_opened_at?: string | null
+  chef_validated_by?: string | null
+  chef_validated_at?: string | null
+  direction_validated_by?: string | null
+  direction_validated_at?: string | null
+  validation_comment?: string | null
+  submitted_by?: string | null
+  submitted_at?: string | null
+  correction_requested_by?: string | null
+  correction_requested_at?: string | null
+  correction_reason?: string | null
+  validated_material_cost?: number | null
+  validated_cost_per_yield?: number | null
+  validated_theoretical_sale_price_ttc?: number | null
+  validated_retained_sale_price_ttc?: number | null
+  validated_snapshot_at?: string | null
+  dressing_photo_url?: string | null
+  dressing_photo_path?: string | null
+  dressing_photo_alt?: string | null
   recipe_ingredients?: RecipeIngredient[]
+  recipe_steps?: RecipeStep[]
   pending_ingredients?: PendingIngredient[]
   validator?: Pick<Profile, 'id' | 'full_name'>
+  submitter?: Pick<Profile, 'id' | 'full_name'>
+  chef_validator?: Pick<Profile, 'id' | 'full_name'>
+  direction_validator?: Pick<Profile, 'id' | 'full_name'>
+  correction_requester?: Pick<Profile, 'id' | 'full_name'>
+  recipe_validation_history?: RecipeValidationHistory[]
+  provisional_prices?: RecipeProvisionalIngredientPrice[]
+}
+
+export type RecipeValidationHistory = {
+  id: string
+  action: string
+  comment: string | null
+  created_at: string
+  metadata?: Record<string, unknown>
+  actor?: Pick<Profile, 'id' | 'full_name'> | null
 }
 
 export type RecipeReadinessCheck = {
@@ -118,12 +167,65 @@ export type RecipeIngredient = {
   quantity_stored: number | null
   unit_stored: string | null
   conversion_factor: number | null
+  is_net_quantity?: boolean
+  quantity_mode?: IngredientQuantityMode
+  trim_form_id?: string | null
+  yield_percent_snapshot?: number | null
+  normalized_unit_price?: number | null
+  price_source_type?: string | null
+  price_source_id?: string | null
+  price_effective_at?: string | null
+  subrecipe_id?: string | null
+  line_kind?: 'article' | 'subrecipe'
+  trim_form_name_snapshot?: string | null
+  normalized_price_snapshot?: number | null
+  price_effective_at_snapshot?: string | null
+  subrecipe_cost_snapshot?: number | null
+  economic_snapshot_at?: string | null
+  imported_indicative_price?: number | null
+  import_observation?: string | null
   resolution_status: PendingIngredientStatus
   sort_order: number
-  articles?: Pick<Article, 'id' | 'name' | 'unit_id' | 'article_locations'> & { units?: Pick<Unit, 'id' | 'name' | 'abbreviation'> }
+  articles?: Pick<Article, 'id' | 'name' | 'unit_id' | 'locations_restricted' | 'article_locations'> & { units?: Pick<Unit, 'id' | 'name' | 'abbreviation'> }
   units?: Pick<Unit, 'id' | 'name' | 'abbreviation'>
   display_unit?: Pick<Unit, 'id' | 'name' | 'abbreviation'>
   stored_unit?: Pick<Unit, 'id' | 'name' | 'abbreviation'>
+  trim_form?: { id: string; name: string; yield_percent: number }
+  provisional_prices?: RecipeProvisionalIngredientPrice[]
+}
+
+export type RecipeProvisionalIngredientPrice = {
+  id: string
+  recipe_id: string
+  copied_from_recipe_id?: string | null
+  copied_from_price_id?: string | null
+  article_id: string
+  amount_ttc: number
+  unit_id: string
+  normalized_amount_ttc?: number | null
+  normalized_unit_id?: string | null
+  conversion_factor_to_stock?: number | null
+  observed_at: string
+  entered_by: string
+  source?: string | null
+  observation?: string | null
+  created_at: string
+}
+
+export type RecipeStep = {
+  id?: string
+  recipe_id?: string
+  step_order: number
+  title?: string | null
+  instructions: string
+  active_duration_minutes?: number | null
+  passive_duration_minutes?: number | null
+  attention_points?: string | null
+  observation?: string | null
+  created_by?: string | null
+  updated_by?: string | null
+  created_at?: string
+  updated_at?: string
 }
 
 export type PendingIngredient = {
@@ -133,6 +235,10 @@ export type PendingIngredient = {
   quantity: number
   unit_name: string
   unit_price: number
+  quantity_mode?: IngredientQuantityMode | null
+  trim_form_name?: string | null
+  imported_indicative_price?: number | null
+  import_observation?: string | null
   conversion_factor?: number | null
   status: PendingIngredientStatus
   resolved_article_id: string | null
@@ -150,15 +256,27 @@ export type ImportReport = {
   ambiguous: number
   unknown: number
   pending: number
+  duplicates: number
+  unknownUnits: number
+  missingConversions: number
+  trimFormsToReview: number
+  errors: string[]
 }
 
 export const recipeIngredientSchema = z.object({
   article_id: z.string().min(1, 'Article obligatoire'),
   quantity: z.number().positive('Quantite obligatoire'),
   unit_id: z.string().min(1, 'Unite obligatoire'),
-  unit_price: z.number().positive('Le prix unitaire doit etre superieur a 0'),
+  // 0 is the draft sentinel when no qualified NORMAL purchase price exists.
+  // Readiness, not draft persistence, blocks submission in that situation.
+  unit_price: z.number().min(0, 'Le prix unitaire doit etre positif ou nul'),
   conversion_factor: z.number().positive('Le facteur manuel doit etre superieur a 0').optional().nullable(),
   sort_order: z.number(),
+  quantity_mode: z.enum(ingredientQuantityModes).optional(),
+  trim_form_id: z.string().optional(),
+  yield_percent_snapshot: z.number().positive().max(100).optional(),
+  line_kind: z.enum(['article', 'subrecipe']).optional(),
+  subrecipe_id: z.string().optional(),
 })
 
 export const recipeSchema = z.object({
@@ -173,6 +291,21 @@ export const recipeSchema = z.object({
   final_price: z.number().min(0),
   status: z.enum(recipeStatuses),
   ingredients: z.array(recipeIngredientSchema),
+  yield_mode: z.enum(recipeYieldModes).optional(),
+  yield_quantity: z.number().positive().optional(),
+  yield_unit_id: z.string().optional(),
+  retained_sale_price_ttc: z.number().min(0).optional(),
+  retained_sale_price_reason: z.string().optional(),
+  dressing_photo_alt: z.string().optional(),
+  steps: z.array(z.object({
+    step_order: z.number().int().positive(),
+    title: z.string().optional(),
+    instructions: z.string(),
+    active_duration_minutes: z.number().min(0).optional(),
+    passive_duration_minutes: z.number().min(0).optional(),
+    attention_points: z.string().optional(),
+    observation: z.string().optional(),
+  })).optional(),
 })
 
 export type RecipeFormValues = z.infer<typeof recipeSchema>
@@ -186,6 +319,25 @@ export function canValidateRecipes(role?: UserRole) {
   return role === 'direction'
 }
 
+export function canChefReviewRecipes(role?: UserRole) {
+  return role === 'chef_cuisine'
+}
+
+export function getRecipeWorkflowLabel(recipe: Pick<Recipe, 'status' | 'workflow_status' | 'direction_validated_at'>) {
+  if (recipe.direction_validated_at || recipe.status === 'validee' || recipe.workflow_status === 'approved') return 'Validée par Direction'
+  if (recipe.workflow_status === 'submitted') return 'À valider par Chef'
+  if (recipe.workflow_status === 'chef_validated') return 'À valider par Direction'
+  if (recipe.workflow_status === 'needs_correction') return 'À corriger'
+  return recipeStatusLabels[recipe.status]
+}
+
+export function getRecipeCostStatusLabel(costStatus?: Recipe['cost_status']) {
+  if (costStatus === 'PROVISOIRE') return 'PROVISOIRE'
+  if (costStatus === 'CONFIRME') return 'CONFIRMÉ'
+  if (costStatus === 'A_REVOIR') return 'À REVOIR'
+  return 'Non défini'
+}
+
 export function calculateRecipeTotals(values: Pick<RecipeFormValues, 'ingredients' | 'portions' | 'margin_coefficient' | 'final_price'>) {
   const totalCost = values.ingredients.reduce((sum, ingredient) => sum + ingredient.quantity * ingredient.unit_price, 0)
   const costPerPortion = values.portions > 0 ? totalCost / values.portions : 0
@@ -196,13 +348,129 @@ export function calculateRecipeTotals(values: Pick<RecipeFormValues, 'ingredient
   return { totalCost, costPerPortion, suggestedPrice, costRatio, marginRate }
 }
 
-export function getRecipeReadiness(recipe: Recipe): RecipeReadinessCheck[] {
+export type RecipePriceObservation = {
+  article_id: string
+  classification: 'normal'
+  normalized_unit_price: number | null
+  actual_unit_price_source: number
+  source_unit_id: string | null
+  effective_date: string
+  supplier_id: string | null
+  source_type: string
+  source_id: string
+}
+
+export function calculateRecipeTheoreticalSalePriceTtc(totalMaterialCost: number, yieldMode: RecipeYieldMode, peopleOrPortions: number) {
+  if (yieldMode === 'rendement_produit') return null
+  return totalMaterialCost * 4 + 2000 * Math.max(0, peopleOrPortions)
+}
+
+export function calculateRecipeTheoreticalSalePriceTtcPerPerson(totalMaterialCost: number, yieldMode: RecipeYieldMode, peopleOrPortions: number) {
+  const total = calculateRecipeTheoreticalSalePriceTtc(totalMaterialCost, yieldMode, peopleOrPortions)
+  return total == null || peopleOrPortions <= 0 ? null : total / peopleOrPortions
+}
+
+export function calculateRecipeCostPerYield(totalMaterialCost: number, yieldQuantity: number) {
+  return yieldQuantity > 0 ? totalMaterialCost / yieldQuantity : null
+}
+
+export type RecipeOperationalEconomics = {
+  calculable: boolean
+  totalMaterialCostTtc: number | null
+  costPerPortion: number | null
+  theoreticalSalePriceTtcTotal: number | null
+  theoreticalSalePriceTtcPerPerson: number | null
+  costPerYield: number | null
+}
+
+export function calculateRecipeOperationalEconomics(
+  materialCostTtc: number | null,
+  yieldMode: RecipeYieldMode,
+  portions: number,
+  yieldQuantity: number,
+): RecipeOperationalEconomics {
+  if (materialCostTtc == null || !Number.isFinite(materialCostTtc)) {
+    return {
+      calculable: false,
+      totalMaterialCostTtc: null,
+      costPerPortion: null,
+      theoreticalSalePriceTtcTotal: null,
+      theoreticalSalePriceTtcPerPerson: null,
+      costPerYield: null,
+    }
+  }
+
+  return {
+    calculable: true,
+    totalMaterialCostTtc: materialCostTtc,
+    costPerPortion: portions > 0 ? materialCostTtc / portions : null,
+    theoreticalSalePriceTtcTotal: calculateRecipeTheoreticalSalePriceTtc(materialCostTtc, yieldMode, portions),
+    theoreticalSalePriceTtcPerPerson: calculateRecipeTheoreticalSalePriceTtcPerPerson(materialCostTtc, yieldMode, portions),
+    costPerYield: yieldMode === 'rendement_produit' ? calculateRecipeCostPerYield(materialCostTtc, yieldQuantity) : null,
+  }
+}
+
+export function calculateRawQuantityFromNet(netQuantity: number, yieldPercent: number) {
+  if (netQuantity <= 0 || yieldPercent <= 0 || yieldPercent > 100) return null
+  return netQuantity / (yieldPercent / 100)
+}
+
+export function calculateIngredientCost(quantity: number, normalizedUnitPrice: number | null, quantityMode: IngredientQuantityMode = 'brut', yieldPercent?: number | null) {
+  if (quantity <= 0 || normalizedUnitPrice == null || normalizedUnitPrice <= 0) return null
+  if (quantityMode === 'net') {
+    const rawQuantity = calculateRawQuantityFromNet(quantity, Number(yieldPercent ?? 0))
+    return rawQuantity == null ? null : rawQuantity * normalizedUnitPrice
+  }
+  return quantity * normalizedUnitPrice
+}
+
+export function getRecipeReadiness(recipe: Recipe, priceObservations?: Map<string, RecipePriceObservation | null>, provisionalPrices?: Map<string, RecipeProvisionalIngredientPrice | null>): RecipeReadinessCheck[] {
   const ingredients = recipe.recipe_ingredients ?? []
   const unresolved = recipe.pending_ingredients?.filter((ingredient) => ingredient.status === 'pending' || ingredient.status === 'ambiguous') ?? []
-  const missingPrices = ingredients.filter((ingredient) => Number(ingredient.unit_price) <= 0)
-  const missingArticleLinks = ingredients.filter((ingredient) => !ingredient.article_id)
+  const articleIngredients = ingredients.filter((ingredient) => (ingredient.line_kind ?? 'article') === 'article')
+  const missingPrices = articleIngredients.filter((ingredient) => {
+    const provisional = provisionalPrices?.get(ingredient.article_id)?.normalized_amount_ttc
+    return (!priceObservations?.has(ingredient.article_id) || priceObservations?.get(ingredient.article_id) === null) && provisional == null
+  })
+  const unnormalizablePrices = articleIngredients.filter((ingredient) => {
+    const observation = priceObservations?.get(ingredient.article_id)
+    return observation != null && observation.normalized_unit_price == null
+  })
+  const invalidNetRows = ingredients.filter((ingredient) => ingredient.quantity_mode === 'net' && (!ingredient.trim_form_id && !(ingredient.yield_percent_snapshot && ingredient.yield_percent_snapshot > 0 && ingredient.yield_percent_snapshot <= 100)))
+  const steps = recipe.recipe_steps ?? []
+  const invalidSteps = steps.filter((step) => !step.instructions?.trim())
+  const uniqueStepOrders = new Set(steps.map((step) => step.step_order))
+  const missingArticleLinks = articleIngredients.filter((ingredient) => !ingredient.article_id)
+  const invalidSubrecipes = ingredients.filter((ingredient) => ingredient.line_kind === 'subrecipe' && (!ingredient.subrecipe_id || Number(ingredient.subrecipe_cost_snapshot ?? ingredient.unit_price ?? 0) <= 0))
+  const currentMaterialCost = ingredients.reduce<number | null>((sum, ingredient) => {
+    if (sum == null) return null
+    const quantity = Number(ingredient.quantity_stored ?? ingredient.quantity ?? 0)
+    if (ingredient.line_kind === 'subrecipe') {
+      const unitCost = Number(ingredient.subrecipe_cost_snapshot ?? ingredient.unit_price ?? 0)
+      return quantity > 0 && unitCost > 0 ? sum + quantity * unitCost : null
+    }
+    const official = priceObservations?.get(ingredient.article_id)
+    const unitCost = official?.normalized_unit_price ?? (official == null ? provisionalPrices?.get(ingredient.article_id)?.normalized_amount_ttc ?? null : null)
+    return quantity > 0 && unitCost != null && unitCost > 0 ? sum + quantity * unitCost : null
+  }, 0)
 
   return [
+    {
+      key: 'name',
+      label: 'Nom de la fiche',
+      ok: Boolean(recipe.name?.trim()),
+      detail: recipe.name?.trim() ? 'Nom renseigné.' : 'Le nom est obligatoire.',
+    },
+    {
+      key: 'yield',
+      label: 'Rendement final',
+      ok: recipe.yield_mode === 'rendement_produit'
+        ? Number(recipe.yield_quantity) > 0 && Boolean(recipe.yield_unit_id)
+        : Number(recipe.portions) > 0,
+      detail: recipe.yield_mode === 'rendement_produit'
+        ? Number(recipe.yield_quantity) > 0 && recipe.yield_unit_id ? 'Rendement produit renseigné.' : 'Quantité et unité de rendement obligatoires.'
+        : Number(recipe.portions) > 0 ? `${recipe.portions} portion(s).` : 'Le nombre de portions est invalide.',
+    },
     {
       key: 'unresolved',
       label: 'Ingredients resolus',
@@ -222,26 +490,52 @@ export function getRecipeReadiness(recipe: Recipe): RecipeReadinessCheck[] {
       detail: missingArticleLinks.length === 0 ? 'Tous les ingredients sont lies a un article.' : `${missingArticleLinks.length} ingredient(s) sans article.`,
     },
     {
+      key: 'net_yields',
+      label: 'Rendements NET / paré',
+      ok: invalidNetRows.length === 0,
+      detail: invalidNetRows.length === 0 ? 'Les lignes NET disposent d’un rendement.' : `${invalidNetRows.length} ligne(s) NET sans forme ou rendement valide.`,
+    },
+    {
+      key: 'subrecipes',
+      label: 'Sous-recettes',
+      ok: invalidSubrecipes.length === 0,
+      detail: invalidSubrecipes.length === 0 ? 'Sous-recettes exploitables.' : `${invalidSubrecipes.length} sous-recette(s) invalide(s) ou sans coût validé.`,
+    },
+    {
+      key: 'procedure',
+      label: 'Procédé structuré',
+      ok: steps.length > 0 && invalidSteps.length === 0 && uniqueStepOrders.size === steps.length,
+      detail: steps.length === 0 ? 'Aucune étape de procédé.' : invalidSteps.length > 0 ? `${invalidSteps.length} étape(s) sans description.` : uniqueStepOrders.size !== steps.length ? 'Ordre des étapes incohérent.' : `${steps.length} étape(s) ordonnée(s).`,
+    },
+    {
+      key: 'dressing_photo',
+      label: 'Photo de dressage',
+      ok: true,
+      detail: recipe.dressing_photo_path || recipe.dressing_photo_url ? 'Photo principale disponible.' : 'Photo facultative absente.',
+    },
+    {
       key: 'prices',
-      label: 'Prix unitaires',
-      ok: missingPrices.length === 0,
-      detail: missingPrices.length === 0 ? 'Tous les prix unitaires sont renseignes.' : `${missingPrices.length} prix unitaire(s) manquants ou a zero.`,
+      label: 'Prix NORMAL Achats',
+      ok: Boolean(priceObservations) && missingPrices.length === 0 && unnormalizablePrices.length === 0,
+      detail: !priceObservations
+        ? 'Prix NORMAL non chargé.'
+        : missingPrices.length > 0
+          ? `${missingPrices.length} prix NORMAL manquant(s).${articleIngredients.some((ingredient) => provisionalPrices?.get(ingredient.article_id)?.normalized_amount_ttc != null) ? ' Un prix provisoire est utilisé.' : ''}`
+          : unnormalizablePrices.length > 0
+            ? `${unnormalizablePrices.length} prix NORMAL non normalisable(s) : coût incomplet.`
+            : articleIngredients.some((ingredient) => provisionalPrices?.get(ingredient.article_id)?.normalized_amount_ttc != null)
+              ? 'Coût provisoire calculable ; validation possible avec statut PROVISOIRE.'
+              : 'Prix NORMAL disponibles et normalisés.',
     },
     {
       key: 'total_cost',
       label: 'Cout total',
-      ok: Number(recipe.total_cost) > 0,
-      detail: Number(recipe.total_cost) > 0 ? `${Number(recipe.total_cost).toLocaleString('fr-FR')} Ar HT.` : 'Le cout total ne peut pas etre nul.',
-    },
-    {
-      key: 'final_price',
-      label: 'Prix de vente final',
-      ok: Number(recipe.final_price) > 0,
-      detail: Number(recipe.final_price) > 0 ? `${Number(recipe.final_price).toLocaleString('fr-FR')} Ar HT.` : 'Veuillez renseigner un prix de vente final.',
+      ok: currentMaterialCost != null && currentMaterialCost > 0,
+      detail: currentMaterialCost != null && currentMaterialCost > 0 ? `${currentMaterialCost.toLocaleString('fr-FR')} Ar.` : 'Le coût matière actuel est non calculable.',
     },
   ]
 }
 
-export function isRecipeReadyForValidation(recipe: Recipe) {
-  return getRecipeReadiness(recipe).every((check) => check.ok)
+export function isRecipeReadyForValidation(recipe: Recipe, priceObservations?: Map<string, RecipePriceObservation | null>, provisionalPrices?: Map<string, RecipeProvisionalIngredientPrice | null>) {
+  return getRecipeReadiness(recipe, priceObservations, provisionalPrices).every((check) => check.ok)
 }

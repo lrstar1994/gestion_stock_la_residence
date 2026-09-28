@@ -74,6 +74,8 @@ export function SaleFormPage() {
   }, [])
 
   const getArticleAllowedLocations = (article?: Article) => {
+    if (!article) return []
+    if (!article.locations_restricted) return locations
     const allowedIds = new Set((article?.article_locations ?? []).map((item) => item.locations.id))
     return locations.filter((location) => allowedIds.has(location.id))
   }
@@ -81,20 +83,16 @@ export function SaleFormPage() {
   const getRecipeAllowedLocations = (recipe?: Recipe) => {
     const ingredients = recipe?.recipe_ingredients ?? []
     if (ingredients.length === 0) return []
-    let commonIds: Set<string> | null = null
+    let commonIds = new Set(locations.map((location) => location.id))
 
     for (const ingredient of ingredients) {
+      const article = ingredient.articles
+      if (!article?.locations_restricted) continue
       const ingredientIds: Set<string> = new Set((ingredient.articles?.article_locations ?? []).map((item) => item.locations.id))
-      if (ingredientIds.size === 0) return []
-      if (commonIds) {
-        const previousIds: string[] = Array.from(commonIds)
-        commonIds = new Set(previousIds.filter((id) => ingredientIds.has(id)))
-      } else {
-        commonIds = ingredientIds
-      }
+      commonIds = new Set([...commonIds].filter((id) => ingredientIds.has(id)))
     }
 
-    return locations.filter((location) => commonIds?.has(location.id))
+    return locations.filter((location) => commonIds.has(location.id))
   }
 
   const getAllowedLocationsForItem = (item: SaleFormValues['items'][number]) => {

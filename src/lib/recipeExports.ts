@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx'
 import { jsPDF } from 'jspdf'
 import type { Recipe } from './recipes'
-import { mainIngredientLabels, recipeStatusLabels, recipeTypeLabels } from './recipes'
+import { calculateRecipeTheoreticalSalePriceTtc, calculateRecipeTheoreticalSalePriceTtcPerPerson, mainIngredientLabels, recipeStatusLabels, recipeTypeLabels } from './recipes'
 
 function formatMoney(value: number | string | null | undefined) {
   return `${Number(value ?? 0).toLocaleString('fr-FR')} Ar`
@@ -34,9 +34,11 @@ function recipeToLibraryRow(recipe: Recipe) {
     Nom: recipe.name,
     Type: `${recipe.type} - ${recipeTypeLabels[recipe.type]}`,
     'Matiere principale': mainIngredientLabels[recipe.main_ingredient],
-    'Cout matiere HT': Number(recipe.total_cost ?? 0),
-    'Cout par portion HT': Number(recipe.cost_per_portion ?? 0),
-    'Prix vente final HT': Number(recipe.final_price ?? 0),
+    'Coût matière TTC total': Number(recipe.total_cost ?? 0),
+    'Coût matière TTC/personne': Number(recipe.cost_per_portion ?? 0),
+    'PV théorique TTC/personne': recipe.yield_mode === 'portions' ? Number(calculateRecipeTheoreticalSalePriceTtcPerPerson(Number(recipe.total_cost ?? 0), 'portions', Number(recipe.portions ?? 0)) ?? 0) : '',
+    'PV théorique TTC total': recipe.yield_mode === 'portions' ? Number(calculateRecipeTheoreticalSalePriceTtc(Number(recipe.total_cost ?? 0), 'portions', Number(recipe.portions ?? 0)) ?? 0) : '',
+    'PV retenu TTC': recipe.retained_sale_price_ttc ?? '',
     'Ratio cout': Number(recipe.cost_ratio ?? 0),
     Marge: Number(recipe.margin_rate ?? 0),
     Statut: recipeStatusLabels[recipe.status],
@@ -52,9 +54,11 @@ export function exportRecipesToCsv(recipes: Recipe[]) {
     Nom: '',
     Type: '',
     'Matiere principale': '',
-    'Cout matiere HT': '',
-    'Cout par portion HT': '',
-    'Prix vente final HT': '',
+    'Coût matière TTC total': '',
+    'Coût matière TTC/personne': '',
+    'PV théorique TTC/personne': '',
+    'PV théorique TTC total': '',
+    'PV retenu TTC': '',
     'Ratio cout': '',
     Marge: '',
     Statut: '',
@@ -134,9 +138,10 @@ export function exportRecipeToPdf(recipe: Recipe) {
     ['Matiere', mainIngredientLabels[recipe.main_ingredient]],
     ['Portions', String(recipe.portions)],
     ['Statut', recipeStatusLabels[recipe.status]],
-    ['Cout total HT', formatMoney(recipe.total_cost)],
-    ['Cout / portion', formatMoney(recipe.cost_per_portion)],
-    ['Prix final HT', formatMoney(recipe.final_price)],
+    ['Coût matière TTC total', formatMoney(recipe.total_cost)],
+    ['Coût matière TTC/personne', formatMoney(recipe.cost_per_portion)],
+    ['PV théorique TTC total', recipe.yield_mode === 'portions' ? formatMoney(calculateRecipeTheoreticalSalePriceTtc(Number(recipe.total_cost ?? 0), 'portions', Number(recipe.portions ?? 0))) : 'Règle métier à définir'],
+    ['PV retenu TTC', recipe.retained_sale_price_ttc == null ? 'Non défini' : formatMoney(recipe.retained_sale_price_ttc)],
     ['Ratio cout', formatPercent(recipe.cost_ratio)],
   ]
 
@@ -172,8 +177,8 @@ export function exportRecipeToPdf(recipe: Recipe) {
   const columns = [
     { label: 'Article', x: margin, width: 58 },
     { label: 'Quantite', x: margin + 60, width: 48 },
-    { label: 'Prix unitaire HT', x: margin + 110, width: 32 },
-    { label: 'Cout HT', x: margin + 144, width: 38 },
+    { label: 'Prix unitaire TTC', x: margin + 110, width: 32 },
+    { label: 'Coût TTC', x: margin + 144, width: 38 },
   ]
 
   const drawHeader = () => {
@@ -226,7 +231,7 @@ export function exportRecipeToPdf(recipe: Recipe) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
   doc.setTextColor(100, 116, 139)
-  doc.text("Tous les prix indiques sont hors TVA. Le prix unitaire est exprime dans l'unite de stock de l'article.", margin, y)
+  doc.text("Les coûts opérationnels FT sont TTC. Le prix unitaire est exprimé dans l'unité de stock de l'article.", margin, y)
   y += 8
 
   if (recipe.status === 'validee') {

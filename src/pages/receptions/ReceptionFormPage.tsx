@@ -1,10 +1,14 @@
-import { Plus, Save, Trash2, Upload } from 'lucide-react'
+﻿import { Plus, Save, Trash2, Upload } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { listArticles, listLocations, listUnits } from '../../api/modules/catalog.api'
-import { createReception, getReception, listDefaultReceptionLocation, listReceivableCashPurchases, listReceivableOrders, updateReception, uploadReceptionAnomalyPhoto } from '../../api/modules/receptions.api'
+import { createReception, getReception, listDefaultReceptionLocation, listReceivableCashPurchases, listReceivableOrders, submitReception, updateReception, uploadReceptionAnomalyPhoto } from '../../api/modules/receptions.api'
 import { listSuppliers } from '../../api/modules/suppliers.api'
+import { QuickSupplierDrawer } from '../../components/suppliers/QuickSupplierDrawer'
+import { SupplierSearchSelect } from '../../components/suppliers/SupplierSearchSelect'
+import { QuickArticleDrawer } from '../../components/articles/QuickArticleDrawer'
+import { ArticleSearchSelect } from '../../components/articles/ArticleSearchSelect'
 import { useAuth } from '../../hooks/useAuth'
 import type { Article, Location, Unit } from '../../lib/catalog'
 import type { PurchaseOrder } from '../../lib/purchaseOrders'
@@ -27,6 +31,7 @@ const emptyForm: ReceptionFormValues = {
   comment: '',
   purchase_order_id: '',
   cash_purchase_id: '',
+  handover_id: null,
   is_historical: false,
   items: [],
 }
@@ -83,15 +88,21 @@ export function ReceptionFormPage() {
   const { profile } = useAuth()
   const isEdit = Boolean(id)
   const [values, setValues] = useState<ReceptionFormValues>(emptyForm)
-  const [receptionMode, setReceptionMode] = useState<ReceptionMode>(searchParams.get('orderId') ? 'order' : 'manual')
+  const [receptionMode, setReceptionMode] = useState<ReceptionMode>(searchParams.get('orderId') ? 'order' : searchParams.get('cashPurchaseId') ? 'cash' : 'manual')
+  const [handoverMode, setHandoverMode] = useState(Boolean(searchParams.get('cashPurchaseId')))
   const [articles, setArticles] = useState<Article[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [units, setUnits] = useState<Unit[]>([])
   const [orders, setOrders] = useState<PurchaseOrder[]>([])
   const [cashPurchases, setCashPurchases] = useState<CashPurchase[]>([])
+  const [supplierDrawerOpen, setSupplierDrawerOpen] = useState(false)
+  const [quickArticleIndex, setQuickArticleIndex] = useState<number | null>(null)
+  const [quickArticleOpen, setQuickArticleOpen] = useState(false)
   const [fiscalSettings, setFiscalSettings] = useState<ReceptionFiscalSettings>(defaultFiscalSettings)
   const isCashReception = Boolean(values.cash_purchase_id)
+  const selectedCashPurchase = cashPurchases.find((purchase) => purchase.id === values.cash_purchase_id)
+  const isCashHandover = Boolean(handoverMode && selectedCashPurchase?.controlled_at)
   const total = useMemo(() => calculateReceptionTotal(values.items), [values.items])
   const fiscalVatAmount = ['invoice_with_recoverable_vat', 'invoice_ttc_vat_not_recoverable'].includes(fiscalSettings.invoice_tax_mode)
     ? total * Number(fiscalSettings.vat_rate ?? 0) / 100
@@ -117,6 +128,7 @@ export function ReceptionFormPage() {
       supplier_id: order.supplier_id,
       purchase_order_id: order.id,
       cash_purchase_id: '',
+      handover_id: null,
       location_id: current.location_id || fallbackLocationId,
       items: order.purchase_order_items?.map((item) => {
         const remaining = Math.max(0, Number(item.quantity_ordered ?? 0) - Number(item.quantity_received ?? 0))
@@ -145,9 +157,10 @@ export function ReceptionFormPage() {
     }))
   }, [suppliers])
 
-  const selectCashPurchase = useCallback((cashPurchase: CashPurchase, fallbackLocationId = '') => {
+  const selectCashPurchase = useCallback((cashPurchase: CashPurchase, fallbackLocationId = '', supplierSource = suppliers) => {
+    const controlled = Boolean(cashPurchase.controlled_at)
     const supplierName = cashPurchase.cash_purchase_items?.map((item) => item.supplier).find(Boolean)
-    const matchedSupplier = suppliers.find((supplier) => normalizeName(supplier.name) === normalizeName(supplierName))
+    const matchedSupplier = supplierSource.find((supplier) => normalizeName(supplier.name) === normalizeName(supplierName))
     if (matchedSupplier) {
       setFiscalSettings(fiscalSettingsFromSupplier(matchedSupplier))
     }
@@ -155,21 +168,25 @@ export function ReceptionFormPage() {
     setValues((current) => ({
       ...current,
       cash_purchase_id: cashPurchase.id,
+      handover_id: current.handover_id ?? (controlled ? crypto.randomUUID() : null),
       purchase_order_id: '',
-      supplier_id: matchedSupplier?.id ?? current.supplier_id,
+      supplier_id: cashPurchase.supplier_id ?? matchedSupplier?.id ?? current.supplier_id,
       location_id: current.location_id || fallbackLocationId,
       invoice_number: cashPurchase.cash_purchase_items?.[0]?.invoice_number ?? current.invoice_number,
       invoice_date: cashPurchase.cash_purchase_items?.[0]?.invoice_date ?? current.invoice_date,
-      items: cashPurchase.cash_purchase_items?.map((item) => ({
-        article_id: item.article_id,
-        quantity_ordered: Number(item.quantity_planned ?? 0),
+      items: cashPurchase.cash_purchase_items?.filter((item) => item.article_id).map((item) => ({
+        article_id: item.article_id as string,
+        quantity_ordered: controlled ? Number(item.quantity_accepted ?? 0) : Number(item.quantity_planned ?? 0),
         unit_id: item.articles?.unit_id ?? item.unit_id,
         unit_display_id: item.unit_id,
         conversion_factor: Number((item.conversion_factor ?? (item.unit_id === (item.articles?.unit_id ?? item.unit_id) ? 1 : 0)) || 1),
-        quantity_delivered: Number(item.quantity_bought_stock ?? item.quantity_bought ?? 0),
-        quantity_accepted: Number(item.quantity_bought_stock ?? item.quantity_bought ?? 0),
-        quantity_delivered_display: Number(item.quantity_bought ?? 0),
-        quantity_accepted_display: Number(item.quantity_bought ?? 0),
+        quantity_delivered: controlled ? Number(item.quantity_accepted ?? 0) : Number(item.quantity_bought_stock ?? item.quantity_bought ?? 0),
+        quantity_accepted: controlled ? Number(item.quantity_accepted ?? 0) : Number(item.quantity_bought_stock ?? item.quantity_bought ?? 0),
+        controller_quantity_accepted: controlled ? Number(item.quantity_accepted ?? 0) : null,
+        handover_quantity_received: controlled ? Number(item.quantity_accepted ?? 0) : null,
+        stock_quantity_accepted: controlled ? Number(item.quantity_accepted ?? 0) : null,
+        quantity_delivered_display: controlled ? Number(item.quantity_accepted ?? 0) : Number(item.quantity_bought ?? 0),
+        quantity_accepted_display: controlled ? Number(item.quantity_accepted ?? 0) : Number(item.quantity_bought ?? 0),
         unit_price_planned: Number(item.unit_price_estimated ?? 0),
         unit_price_real: Number(item.unit_price_real_stock ?? item.unit_price_real ?? 0),
         unit_price_display: Number(item.unit_price_real ?? 0),
@@ -189,16 +206,18 @@ export function ReceptionFormPage() {
 
   const changeReceptionMode = (mode: ReceptionMode) => {
     setReceptionMode(mode)
+    setHandoverMode(false)
     setValues((current) => ({
       ...current,
       purchase_order_id: '',
       cash_purchase_id: '',
+      handover_id: null,
       items: [],
     }))
   }
 
   const load = useCallback(async () => {
-    const [articlesResult, loadedSuppliers, loadedLocations, loadedUnits, loadedOrders, loadedCashPurchases, defaultLocation] = await Promise.all([
+    const [articlesResult, suppliersResult, locationsResult, unitsResult, ordersResult, cashPurchasesResult, defaultLocationResult] = await Promise.allSettled([
       listArticles({ page: 1, pageSize: 1000, status: 'active' }),
       listSuppliers(),
       listLocations(),
@@ -207,12 +226,29 @@ export function ReceptionFormPage() {
       listReceivableCashPurchases(),
       listDefaultReceptionLocation(),
     ])
-    setArticles([...articlesResult.articles].sort((left, right) => left.name.localeCompare(right.name, 'fr', { sensitivity: 'base' })))
+    const loadedArticles = articlesResult.status === 'fulfilled' ? articlesResult.value.articles : []
+    const loadedSuppliers = suppliersResult.status === 'fulfilled' ? suppliersResult.value : []
+    const loadedLocations = locationsResult.status === 'fulfilled' ? locationsResult.value : []
+    const loadedUnits = unitsResult.status === 'fulfilled' ? unitsResult.value : []
+    const loadedOrders = ordersResult.status === 'fulfilled' ? ordersResult.value : []
+    const loadedCashPurchases = cashPurchasesResult.status === 'fulfilled' ? cashPurchasesResult.value : []
+    const defaultLocation = defaultLocationResult.status === 'fulfilled' ? defaultLocationResult.value : null
+    setArticles([...loadedArticles].sort((left, right) => left.name.localeCompare(right.name, 'fr', { sensitivity: 'base' })))
     setSuppliers(loadedSuppliers)
     setLocations(loadedLocations)
     setUnits(loadedUnits)
     setOrders(loadedOrders)
     setCashPurchases(loadedCashPurchases as CashPurchase[])
+
+    const requestedCashPurchaseId = searchParams.get('cashPurchaseId')
+    if (!id && requestedCashPurchaseId) {
+      const requestedPurchase = loadedCashPurchases.find((purchase) => purchase.id === requestedCashPurchaseId) as CashPurchase | undefined
+      if (!requestedPurchase) throw new Error('Achat contrôle introuvable ou déjà pris en charge')
+      if (!defaultLocation) throw new Error('Localisation Magasin principal introuvable')
+      setReceptionMode('cash')
+      setHandoverMode(true)
+      selectCashPurchase(requestedPurchase, defaultLocation.id, loadedSuppliers)
+    }
 
     if (id) {
       const reception = await getReception(id)
@@ -226,12 +262,16 @@ export function ReceptionFormPage() {
         comment: reception.comment ?? '',
         purchase_order_id: reception.purchase_order_id ?? '',
         cash_purchase_id: reception.cash_purchase_id ?? '',
+        handover_id: reception.handover_id ?? null,
         is_historical: Boolean(reception.is_historical),
         items: reception.reception_items?.map((item) => ({
           article_id: item.article_id,
           quantity_ordered: Number(item.quantity_ordered ?? 0),
           quantity_delivered: Number(item.quantity_delivered ?? 0),
           quantity_accepted: Number(item.quantity_accepted ?? 0),
+          controller_quantity_accepted: item.controller_quantity_accepted ?? null,
+          handover_quantity_received: item.handover_quantity_received ?? null,
+          stock_quantity_accepted: item.stock_quantity_accepted ?? null,
           unit_id: item.unit_id,
           unit_display_id: item.unit_display_id ?? item.unit_id,
           conversion_factor: Number(item.conversion_factor ?? 1),
@@ -275,7 +315,7 @@ export function ReceptionFormPage() {
         }
       }
     }
-  }, [id, searchParams, selectOrder])
+  }, [id, searchParams, selectOrder, selectCashPurchase])
 
   useEffect(() => {
     load().catch(() => toast.error('Impossible de charger le formulaire.'))
@@ -342,10 +382,15 @@ export function ReceptionFormPage() {
     }))
   }
 
+  const openQuickArticle = (index: number) => {
+    setQuickArticleIndex(index)
+    setQuickArticleOpen(true)
+  }
+
   const addAnomaly = (index: number) => {
     const item = values.items[index]
     updateItem(index, { has_anomaly: true, anomalies: [...(item.anomalies ?? []), { anomaly_type: 'quantite_manquante', description: '', photo_url: '' }] })
-    toast.success('Anomalie enregistrée')
+    toast.success('Anomalie enregistrÃ©e')
   }
 
   const updateAnomaly = (itemIndex: number, anomalyIndex: number, patch: Partial<ReceptionFormValues['items'][number]['anomalies'][number]>) => {
@@ -395,14 +440,35 @@ export function ReceptionFormPage() {
         if (Number(fiscalSettings.manual_cost_total ?? 0) <= 0) throw new Error('Veuillez saisir un cout manuel total')
         if (!fiscalSettings.effective_cost_note.trim()) throw new Error('Veuillez saisir une note pour le cout manuel')
       }
-      const payload = applyFiscalSettingsToValues(values)
+      const payload = applyFiscalSettingsToValues(isCashHandover ? {
+        ...values,
+        items: values.items.map((item) => {
+          const expected = Number(item.quantity_accepted ?? 0)
+          const physical = Number(item.quantity_delivered_display ?? item.quantity_delivered ?? 0)
+          if (physical === expected) return { ...item, quantity_ordered: expected, quantity_delivered: physical, quantity_accepted: expected, controller_quantity_accepted: expected, handover_quantity_received: physical, stock_quantity_accepted: expected }
+          return {
+            ...item,
+            quantity_ordered: expected,
+            quantity_delivered: physical,
+            controller_quantity_accepted: expected,
+            handover_quantity_received: physical,
+            stock_quantity_accepted: 0,
+            quantity_accepted: 0,
+            quality: 'non_conforme' as const,
+            has_anomaly: true,
+            quality_comment: `Ecart de passation : attendu ${expected}, reçu ${physical}`,
+            anomalies: [...(item.anomalies ?? []), { anomaly_type: 'livraison_partielle' as const, description: `Passation physique différente de la quantité acceptée : attendu ${expected}, reçu ${physical}`, photo_url: '' }],
+          }
+        }),
+      } : values)
       if (id) {
         await updateReception(id, payload, profile?.id)
-        toast.success('Reception mise a jour avec succes')
+        toast.success('Reception marchandises mise a jour avec succes')
         navigate(`/receptions/${id}`)
       } else {
         const receptionId = await createReception(payload, profile?.id)
-        toast.success('Réception créée avec succès')
+        if (isCashHandover) await submitReception(receptionId, profile?.id)
+        toast.success('RÃ©ception crÃ©Ã©e avec succÃ¨s')
         navigate(`/receptions/${receptionId}`)
       }
     } catch (error) {
@@ -413,14 +479,14 @@ export function ReceptionFormPage() {
   return (
     <form onSubmit={submit} className="space-y-6">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div><p className="eyebrow">Reception</p><h1 className="page-title mt-2">{isEdit ? 'Modifier la reception' : 'Nouvelle reception'}</h1></div>
+        <div><p className="eyebrow">Reception marchandises</p><h1 className="page-title mt-2">{isEdit ? 'Modifier la reception marchandises' : 'Nouvelle reception marchandises'}</h1></div>
         <div className="flex gap-2"><Link to="/receptions" className="btn-secondary">Annuler</Link><button type="submit" className="btn-primary"><Save className="mr-2 h-4 w-4" /> Enregistrer</button></div>
       </header>
 
       {!isEdit && (
         <section className="surface space-y-4 p-5">
           <div>
-            <p className="field-label">Mode de reception</p>
+            <p className="field-label">Mode de reception marchandises</p>
             <div className="mt-3 grid gap-3 md:grid-cols-3">
               <button type="button" onClick={() => changeReceptionMode('order')} className={`rounded-md border px-4 py-3 text-left text-sm font-semibold transition ${receptionMode === 'order' ? 'border-[#1E3A8A] bg-blue-50 text-[#1E3A8A]' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>
                 Depuis une commande fournisseur
@@ -431,7 +497,7 @@ export function ReceptionFormPage() {
                 <span className="mt-1 block text-xs font-normal text-slate-500">Pour controler un achat cash dont le retour d'achat est saisi.</span>
               </button>
               <button type="button" onClick={() => changeReceptionMode('manual')} className={`rounded-md border px-4 py-3 text-left text-sm font-semibold transition ${receptionMode === 'manual' ? 'border-[#1E3A8A] bg-blue-50 text-[#1E3A8A]' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>
-                Reception sans commande
+                Reception marchandises sans commande
                 <span className="mt-1 block text-xs font-normal text-slate-500">Pour une reception exceptionnelle saisie manuellement.</span>
               </button>
             </div>
@@ -451,7 +517,7 @@ export function ReceptionFormPage() {
             <div className="space-y-3">
               <label className="block">
                 <span className="field-label">Achat en especes</span>
-                <select value={values.cash_purchase_id} onChange={(event) => { const cashPurchase = cashPurchases.find((item) => item.id === event.target.value); if (cashPurchase) selectCashPurchase(cashPurchase, values.location_id); else setValues((current) => ({ ...current, cash_purchase_id: '', items: [] })) }} className="input mt-2">
+              <select value={values.cash_purchase_id} onChange={(event) => { const cashPurchase = cashPurchases.find((item) => item.id === event.target.value); if (cashPurchase) { setHandoverMode(Boolean(cashPurchase.controlled_at)); selectCashPurchase(cashPurchase, values.location_id) } else setValues((current) => ({ ...current, cash_purchase_id: '', handover_id: null, items: [] })) }} className="input mt-2" disabled={handoverMode}>
                   <option value="">Selectionner un achat en especes</option>
                   {cashPurchases.map((purchase) => <option key={purchase.id} value={purchase.id}>{purchase.reference} - {purchase.reason}</option>)}
                 </select>
@@ -459,28 +525,32 @@ export function ReceptionFormPage() {
               <div className="rounded-md border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
                 La reception est disponible des que le retour d'achat est saisi avec les lignes a controler. Un ecart de monnaie ou une caisse non cloturee ne bloque pas le controle marchandise ni l'entree en stock.
               </div>
+              {isCashHandover && <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">Passation physique : les quantités contrôlées, le prix réel et les articles sont verrouillés. Saisissez uniquement la quantité physiquement reçue au Magasin principal.</div>}
             </div>
           )}
 
           {receptionMode === 'manual' && (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              Reception sans commande : utilisez ce mode uniquement pour une reception exceptionnelle non liee a une commande fournisseur ou a un achat en especes. Les articles, quantites et prix doivent etre saisis manuellement.
+              Reception marchandises sans commande : utilisez ce mode uniquement pour une reception exceptionnelle non liee a une commande fournisseur ou a un achat en especes. Les articles, quantites et prix doivent etre saisis manuellement.
             </div>
           )}
+          <div className="rounded-md border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+            Ordre de controle : creer la reception marchandises, relever son numero interne de classement, l ecrire sur la facture papier, scanner ou photographier la facture avec le numero visible, joindre la piece au dossier, puis transmettre au Magasin / Stock.
+          </div>
         </section>
       )}
 
       <section className="surface grid gap-4 p-5 md:grid-cols-2">
-        <label className="block"><span className="field-label">Fournisseur</span><select value={values.supplier_id} onChange={(event) => changeSupplier(event.target.value)} disabled={isCashReception && Boolean(values.supplier_id)} className="input mt-2 disabled:bg-slate-100"><option value="">Selectionner</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
-        <label className="block"><span className="field-label">Localisation reception</span><select value={values.location_id} onChange={(event) => setValues((current) => ({ ...current, location_id: event.target.value }))} className="input mt-2">{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
-        <label className="block"><span className="field-label">Date reception</span><input type="date" value={values.reception_date} onChange={(event) => setValues((current) => ({ ...current, reception_date: event.target.value }))} className="input mt-2" /></label>
-        <label className="block"><span className="field-label">Numero facture/recu</span><input value={values.invoice_number} onChange={(event) => setValues((current) => ({ ...current, invoice_number: event.target.value }))} readOnly={isCashReception && Boolean(values.invoice_number)} className="input mt-2 read-only:bg-slate-100" /></label>
+        <label className="block"><span className="field-label">Fournisseur</span><div className="mt-2"><SupplierSearchSelect suppliers={suppliers} value={values.supplier_id} onChange={changeSupplier} onCreate={() => setSupplierDrawerOpen(true)} disabled={isCashReception && Boolean(values.supplier_id)} emptyLabel="Selectionner un fournisseur" /></div></label>
+        <label className="block"><span className="field-label">Localisation reception marchandises</span><select value={values.location_id} onChange={(event) => setValues((current) => ({ ...current, location_id: event.target.value }))} className="input mt-2" disabled={isCashHandover}><option value="">Selectionner une localisation active</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select><span className="mt-1 block text-xs text-slate-500">{isCashHandover ? 'Destination verrouillée : Magasin principal.' : 'Liste limitee aux localisations actives.'}</span></label>
+        <label className="block"><span className="field-label">Date reception marchandises</span><input type="date" value={values.reception_date} onChange={(event) => setValues((current) => ({ ...current, reception_date: event.target.value }))} className="input mt-2" readOnly={isCashHandover} /></label>
+        <label className="block"><span className="field-label">Numero facture fournisseur / recu</span><input value={values.invoice_number} onChange={(event) => setValues((current) => ({ ...current, invoice_number: event.target.value }))} readOnly={isCashReception && Boolean(values.invoice_number)} className="input mt-2 read-only:bg-slate-100" /></label>
         <label className="block"><span className="field-label">Date facture</span><input type="date" value={values.invoice_date} onChange={(event) => setValues((current) => ({ ...current, invoice_date: event.target.value }))} readOnly={isCashReception && Boolean(values.invoice_date)} className="input mt-2 read-only:bg-slate-100" /></label>
         <label className="block"><span className="field-label">Commentaire</span><input value={values.comment} onChange={(event) => setValues((current) => ({ ...current, comment: event.target.value }))} className="input mt-2" /></label>
         <label className="flex gap-3 rounded-md border border-amber-200 bg-amber-50 p-4 md:col-span-2">
           <input type="checkbox" checked={values.is_historical} onChange={(event) => setValues((current) => ({ ...current, is_historical: event.target.checked }))} className="mt-1 h-4 w-4" />
           <span>
-            <span className="block font-bold text-amber-900">Reception historique sans entree en stock</span>
+            <span className="block font-bold text-amber-900">Reception marchandises historique sans entree en stock</span>
             <span className="mt-1 block text-sm text-amber-800">A utiliser uniquement pour integrer d'anciennes factures deja traitees avant l'utilisation du logiciel. Cette reception pourra etre facturee, mais ne modifiera pas le stock.</span>
           </span>
         </label>
@@ -564,54 +634,62 @@ export function ReceptionFormPage() {
 
       <section className="surface overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <h2 className="text-lg font-bold">Articles recus et valorisation stock</h2>
+          <div>
+            <h2 className="text-lg font-bold">Articles recus et valorisation stock</h2>
+            {receptionMode === 'manual' && <p className="mt-1 text-sm text-slate-600">Reception marchandises sans commande : saisissez les lignes une par une, recherchez un article ou creez-le s il est absent.</p>}
+          </div>
           {receptionMode === 'manual' && (
-            <button type="button" onClick={addItem} className="btn-secondary"><Plus className="mr-2 h-4 w-4" /> Ajouter</button>
+            <button type="button" onClick={addItem} className="btn-secondary"><Plus className="mr-2 h-4 w-4" /> Ajouter un article reçu</button>
           )}
         </div>
         <div className="divide-y divide-slate-200">
           {values.items.map((item, index) => {
             const selectedArticle = articles.find((article) => article.id === item.article_id)
+            const controlledItem = isCashHandover ? selectedCashPurchase?.cash_purchase_items?.find((cashItem) => cashItem.article_id === item.article_id) : undefined
             const displayUnit = units.find((unit) => unit.id === (item.unit_display_id || item.unit_id))
             const stockUnit = units.find((unit) => unit.id === item.unit_id)
             const autoFactor = getUnitConversionFactor(displayUnit, stockUnit)
             const needsManualFactor = Boolean(displayUnit && stockUnit && !autoFactor && displayUnit.id !== stockUnit.id)
             const refused = Math.max(0, Number(item.quantity_delivered_display ?? item.quantity_delivered) - Number(item.quantity_accepted_display ?? item.quantity_accepted))
+            const plannedTotal = Number(item.quantity_ordered ?? 0) * Number(item.unit_price_planned ?? 0)
             const acceptedTotal = Number(item.quantity_accepted ?? 0) * Number(item.unit_price_real ?? 0)
+            const priceDifference = Number(item.unit_price_display ?? item.unit_price_real ?? 0) - Number(item.unit_price_planned ?? 0)
+            const totalDifference = acceptedTotal - plannedTotal
             return (
               <div key={`${item.article_id}-${index}`} className="space-y-4 px-5 py-4">
-                <div className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-4">
+                  <div className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-4">
                   <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
                     <label className="block">
                       <span className="field-label">Article</span>
-                      <select value={item.article_id} onChange={(event) => changeArticle(index, event.target.value)} className="input mt-2">
-                        <option value="">Article</option>
-                        {articles.map((article) => <option key={article.id} value={article.id}>{article.name}</option>)}
-                      </select>
+                      <div className="mt-2"><ArticleSearchSelect articles={articles} value={item.article_id} onChange={(articleId) => changeArticle(index, articleId)} onCreate={() => openQuickArticle(index)} disabled={receptionMode !== 'manual'} /></div>
                     </label>
                   {receptionMode === 'manual' && (
                     <button type="button" onClick={() => removeItem(index)} className="btn-secondary text-red-700"><Trash2 className="h-4 w-4" /></button>
                   )}
                   </div>
+                {controlledItem && <p className="rounded-md bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">Contrôle Contrôleur — livré : {Number(controlledItem.quantity_bought ?? 0).toLocaleString('fr-FR')} · accepté : {Number(controlledItem.quantity_accepted ?? 0).toLocaleString('fr-FR')} · refusé : {Math.max(0, Number(controlledItem.quantity_bought ?? 0) - Number(controlledItem.quantity_accepted ?? 0)).toLocaleString('fr-FR')} · PU réel : {Number(controlledItem.unit_price_real ?? 0).toLocaleString('fr-FR')} Ar</p>}
                   <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-[100px_120px_120px_100px_130px_130px_130px] xl:items-end">
                     <Info label="Commande" value={`${Number(item.quantity_ordered).toLocaleString('fr-FR')} ${displayUnit?.abbreviation ?? ''}`} />
                     <label className="block">
                       <span className="field-label">Unite recue</span>
-                      <select value={item.unit_display_id || item.unit_id} onChange={(event) => updateItem(index, computeConversionPatch(item, { unit_display_id: event.target.value, conversion_factor: undefined }))} className="input mt-2">
+                        <select value={item.unit_display_id || item.unit_id} disabled={isCashHandover} onChange={(event) => updateItem(index, computeConversionPatch(item, { unit_display_id: event.target.value, conversion_factor: undefined }))} className="input mt-2 disabled:bg-slate-100">
                         {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.abbreviation}</option>)}
                       </select>
                     </label>
-                    <label className="block"><span className="field-label">Quantite livree</span><input type="number" value={item.quantity_delivered_display ?? item.quantity_delivered} onChange={(event) => updateItem(index, computeConversionPatch(item, { quantity_delivered_display: Number(event.target.value) }))} className="input mt-2" /></label>
-                    <label className="block"><span className="field-label">Quantite acceptee</span><input type="number" value={item.quantity_accepted_display ?? item.quantity_accepted} onChange={(event) => updateItem(index, computeConversionPatch(item, { quantity_accepted_display: Number(event.target.value) }))} className="input mt-2" /></label>
+                      <label className="block"><span className="field-label">{isCashHandover ? 'Quantite physiquement reçue' : 'Quantite livree'}</span><input type="number" min="0" value={item.quantity_delivered_display ?? item.quantity_delivered} onChange={(event) => updateItem(index, isCashHandover ? { quantity_delivered_display: Number(event.target.value), quantity_delivered: Number(event.target.value) } : computeConversionPatch(item, { quantity_delivered_display: Number(event.target.value) }))} className="input mt-2" /></label>
+                    <label className="block"><span className="field-label">{isCashHandover ? 'Quantite attendue (Contrôleur)' : 'Quantite acceptee'}</span><input type="number" value={item.quantity_accepted_display ?? item.quantity_accepted} readOnly={isCashHandover} onChange={(event) => updateItem(index, computeConversionPatch(item, { quantity_accepted_display: Number(event.target.value) }))} className="input mt-2 read-only:bg-slate-100" /></label>
                     <Info label="Quantite refusee" value={`${refused.toLocaleString('fr-FR')} ${displayUnit?.abbreviation ?? ''}`} />
                     <Info label="Prix prevu saisi" value={`${Number(item.unit_price_planned ?? 0).toLocaleString('fr-FR')} Ar / ${displayUnit?.abbreviation ?? ''}`} />
-                    <label className="block"><span className="field-label">Prix reel saisi</span><input type="number" value={item.unit_price_display ?? item.unit_price_real} onChange={(event) => updateItem(index, computeConversionPatch(item, { unit_price_display: Number(event.target.value) }))} className="input mt-2" /></label>
+                    <label className="block"><span className="field-label">Prix reel saisi</span><input type="number" value={item.unit_price_display ?? item.unit_price_real} readOnly={isCashHandover} onChange={(event) => updateItem(index, computeConversionPatch(item, { unit_price_display: Number(event.target.value) }))} className="input mt-2 read-only:bg-slate-100" /></label>
+                    <Info label="Total prevu" value={`${plannedTotal.toLocaleString('fr-FR')} Ar`} />
                     <Info label="Total recu saisi" value={`${acceptedTotal.toLocaleString('fr-FR')} Ar`} />
+                    <Info label="Ecart prix" value={`${priceDifference >= 0 ? '+' : ''}${priceDifference.toLocaleString('fr-FR')} Ar`} />
+                    <Info label="Ecart total" value={`${totalDifference >= 0 ? '+' : ''}${totalDifference.toLocaleString('fr-FR')} Ar`} />
                   </div>
                   <div className="grid gap-3 rounded-md bg-white p-3 text-sm md:grid-cols-3">
                     <label className="block">
                       <span className="field-label">Facteur conversion vers stock</span>
-                      <input type="number" min="0" step="0.0001" value={item.conversion_factor ?? 1} onChange={(event) => updateItem(index, computeConversionPatch(item, { conversion_factor: Number(event.target.value) }))} className="input mt-2" />
+                      <input type="number" min="0" step="0.0001" value={item.conversion_factor ?? 1} disabled={isCashHandover} onChange={(event) => updateItem(index, computeConversionPatch(item, { conversion_factor: Number(event.target.value) }))} className="input mt-2 disabled:bg-slate-100" />
                     </label>
                     <Info label="Entree stock" value={`${Number(item.quantity_accepted ?? 0).toLocaleString('fr-FR')} ${stockUnit?.abbreviation ?? selectedArticle?.units?.abbreviation ?? ''}`} />
                     <Info label="Valeur entree stock" value={`${Number(item.unit_price_real ?? 0).toLocaleString('fr-FR')} Ar / ${stockUnit?.abbreviation ?? selectedArticle?.units?.abbreviation ?? ''}`} />
@@ -619,8 +697,8 @@ export function ReceptionFormPage() {
                   </div>
                 </div>
                 <div className="grid gap-3 md:grid-cols-[180px_1fr_auto]">
-                  <label className="block"><span className="field-label">Controle qualite</span><select value={item.quality} onChange={(event) => updateItem(index, { quality: event.target.value as typeof item.quality, has_anomaly: event.target.value !== 'conforme' || item.has_anomaly })} className="input mt-2">{qualityStatuses.map((quality) => <option key={quality} value={quality}>{qualityStatusLabels[quality]}</option>)}</select></label>
-                  <label className="block"><span className="field-label">Commentaire qualite</span><input value={item.quality_comment} onChange={(event) => updateItem(index, { quality_comment: event.target.value })} className="input mt-2" /></label>
+                  <label className="block"><span className="field-label">Controle qualite</span><select value={item.quality} disabled={isCashHandover} onChange={(event) => updateItem(index, { quality: event.target.value as typeof item.quality, has_anomaly: event.target.value !== 'conforme' || item.has_anomaly })} className="input mt-2 disabled:bg-slate-100">{qualityStatuses.map((quality) => <option key={quality} value={quality}>{qualityStatusLabels[quality]}</option>)}</select></label>
+                  <label className="block"><span className="field-label">Motif refus / commentaire qualite</span><input value={item.quality_comment} readOnly={isCashHandover} onChange={(event) => updateItem(index, { quality_comment: event.target.value })} className="input mt-2 read-only:bg-slate-100" placeholder={Number(item.quantity_accepted_display ?? item.quantity_accepted) < Number(item.quantity_delivered_display ?? item.quantity_delivered) ? 'Motif obligatoire si refus' : 'Facultatif si tout est accepte'} /></label>
                   <button type="button" onClick={() => addAnomaly(index)} className="btn-secondary">Ajouter anomalie</button>
                 </div>
                 {(item.anomalies ?? []).map((anomaly, anomalyIndex) => (
@@ -631,6 +709,7 @@ export function ReceptionFormPage() {
                     {anomaly.photo_url && <a href={anomaly.photo_url} target="_blank" className="text-sm font-semibold text-[#1E3A8A] md:col-span-3">Photo ajoutee</a>}
                   </div>
                 ))}
+                <p className="text-xs font-semibold text-slate-500">Tous les articles sont acceptes par defaut. Modifiez la quantite acceptee pour un refus partiel ou total et indiquez le motif.</p>
               </div>
             )
           })}
@@ -639,6 +718,35 @@ export function ReceptionFormPage() {
       </section>
 
       <section className="surface flex items-center justify-between p-5"><span className="text-sm text-slate-600">Total recu saisi</span><span className="text-2xl font-black text-[#1E3A8A]">{total.toLocaleString('fr-FR')} Ar</span></section>
+
+      <QuickSupplierDrawer
+        open={supplierDrawerOpen}
+        profileId={profile?.id}
+        onClose={() => setSupplierDrawerOpen(false)}
+        onCreated={(supplier) => {
+          setSuppliers((current) => [...current, supplier].sort((left, right) => left.name.localeCompare(right.name, 'fr', { sensitivity: 'base' })))
+          setFiscalSettings(fiscalSettingsFromSupplier(supplier))
+          setValues((current) => ({ ...current, supplier_id: supplier.id }))
+          setSupplierDrawerOpen(false)
+        }}
+      />
+
+      <QuickArticleDrawer
+        open={quickArticleOpen}
+        profileId={profile?.id}
+        defaultLocationId={values.location_id}
+        defaultSupplierId={values.supplier_id}
+        onClose={() => { setQuickArticleOpen(false); setQuickArticleIndex(null) }}
+        onCreated={(article) => {
+          setArticles((current) => [article, ...current.filter((item) => item.id !== article.id)])
+          if (quickArticleIndex !== null) {
+            setValues((current) => ({
+              ...current,
+              items: current.items.map((item, index) => index === quickArticleIndex ? { ...item, article_id: article.id, unit_id: article.unit_id, unit_display_id: article.unit_id, conversion_factor: 1 } : item),
+            }))
+          }
+        }}
+      />
     </form>
   )
 }

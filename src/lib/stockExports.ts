@@ -22,13 +22,15 @@ export function exportStockToExcel(rows: StockRow[]) {
   const worksheet = XLSX.utils.json_to_sheet(rows.map((row) => ({
     Article: row.articles?.name,
     Famille: row.articles?.families?.name,
-    Quantite: Number(row.total_quantity ?? 0),
-    Unite: row.articles?.units?.abbreviation,
+    'Quantité totale': Number(row.total_quantity ?? 0),
+    'Unité stock': row.articles?.units?.abbreviation,
     'Stock minimum': row.articles?.min_stock,
-    'Dernier prix': Number(row.last_price ?? 0),
-    'Prix moyen': Number(row.average_price ?? 0),
-    'Valeur stock': Number(row.stock_value ?? (Number(row.total_quantity ?? 0) * Number(row.average_price ?? 0))),
-    'Derniere entree': row.last_entry_date ?? '',
+    'Dernier coût': row.last_price == null ? 'À compléter' : Number(row.last_price),
+    'Coût moyen': row.average_price == null ? 'À compléter' : Number(row.average_price),
+    'Valeur stock': row.stock_value == null ? 'Indisponible' : Number(row.stock_value),
+    'État valorisation': row.valuation_status === 'missing_cost' ? 'Coût manquant' : 'Disponible',
+    'État initial': row.initialization_status ?? '',
+    'Dernier mouvement': row.last_movement_date ?? '',
     Localisations: row.locations?.map((location) => `${location.location_name}: ${location.quantity}`).join(' | '),
   })))
   const workbook = XLSX.utils.book_new()

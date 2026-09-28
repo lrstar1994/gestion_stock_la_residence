@@ -5,6 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test:stock-corrections": "node --test-isolation=none --test tests/stock-corrections.test.mjs",
+    "test:inventory-close": "node --test-isolation=none --test tests/inventory-close.test.mjs",
+    "test:group-stock-transfers": "node --test-isolation=none --test tests/group-stock-transfers.test.mjs",
+    "test:article-locations": "node --test-isolation=none --test tests/article-locations.test.mjs",
+    "test:cash-purchase-receipts": "node --test-isolation=none --test tests/cash-purchase-receipts-ux.test.mjs",
+    "test:admin-user-creation": "node --test-isolation=none --test tests/admin-user-creation.test.mjs",
+    "test:recipe-import-a5": "node --test-isolation=none --test tests/recipe-import-a5.test.mjs",
+    "test:recipe-workflow-a6": "node --test-isolation=none --test tests/recipe-workflow-a6.test.mjs",
+    "typecheck": "tsc -b --noEmit",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -39,6 +48,7 @@
     "eslint-plugin-react-refresh": "^0.5.3",
     "globals": "^17.6.0",
     "postcss": "^8.4.49",
+    "supabase": "^2.116.0",
     "tailwindcss": "^3.4.17",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.61.0",

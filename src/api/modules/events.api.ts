@@ -60,7 +60,7 @@ export async function listEvents(filters: EventFilters = {}) {
 export async function getEvent(id: string) {
   const { data, error } = await supabase.schema('stock')
     .from('events')
-    .select('*, event_recipes(*, recipes(*, recipe_ingredients(*, articles(id, name, unit_id, default_supplier, families(id, name), units(id, name, abbreviation)), units:units!recipe_ingredients_unit_id_fkey(id, name, abbreviation), display_unit:units!recipe_ingredients_unit_display_fkey(id, name, abbreviation), stored_unit:units!recipe_ingredients_unit_stored_fkey(id, name, abbreviation))))')
+    .select('*, event_recipes(*, recipes(*, recipe_ingredients!recipe_ingredients_recipe_id_fkey(*, articles(id, name, unit_id, default_supplier, families(id, name), units(id, name, abbreviation)), units:units!recipe_ingredients_unit_id_fkey(id, name, abbreviation), display_unit:units!recipe_ingredients_unit_display_fkey(id, name, abbreviation), stored_unit:units!recipe_ingredients_unit_stored_fkey(id, name, abbreviation))))')
     .eq('id', id)
     .single()
 

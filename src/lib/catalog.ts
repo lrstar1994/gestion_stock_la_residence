@@ -2,12 +2,28 @@ import { z } from 'zod'
 import type { UserRole } from './validation'
 
 export const articleStatuses = ['active', 'inactive', 'archived'] as const
+export const articleNatures = ['ingredient', 'boisson', 'consommable', 'fourniture', 'produit_entretien', 'materiel_maintenance', 'equipement', 'service', 'emballage', 'consigne', 'autre'] as const
 export type ArticleStatus = (typeof articleStatuses)[number]
+export type ArticleNature = (typeof articleNatures)[number]
+
+export const articleNatureLabels: Record<ArticleNature, string> = {
+  ingredient: 'Ingrédient',
+  boisson: 'Boisson',
+  consommable: 'Consommable',
+  fourniture: 'Fourniture',
+  produit_entretien: 'Produit d’entretien',
+  materiel_maintenance: 'Matériel maintenance',
+  equipement: 'Équipement',
+  service: 'Service',
+  emballage: 'Emballage',
+  consigne: 'Consigne',
+  autre: 'Autre',
+}
 
 export const articleStatusLabels: Record<ArticleStatus, string> = {
   active: 'Actif',
   inactive: 'Inactif',
-  archived: 'Archive',
+  archived: 'Archivé',
 }
 
 export const catalogManagerRoles: UserRole[] = ['direction', 'chef_cuisine', 'magasinier', 'acheteur']
@@ -28,6 +44,8 @@ export type Family = {
   updated_at: string
   created_by: string | null
   articles_count?: number
+  normalized_key?: string | null
+  is_active?: boolean
 }
 
 export type SubCategory = {
@@ -39,6 +57,8 @@ export type SubCategory = {
   created_by: string | null
   families?: Pick<Family, 'id' | 'name'>
   articles_count?: number
+  normalized_key?: string | null
+  is_active?: boolean
 }
 
 export type Unit = {
@@ -48,6 +68,11 @@ export type Unit = {
   created_at: string
   updated_at: string
   created_by: string | null
+  normalized_key?: string | null
+  unit_type?: string
+  reference_unit_id?: string | null
+  is_active?: boolean
+  articles_count?: number
 }
 
 export type Location = {
@@ -59,6 +84,11 @@ export type Location = {
   updated_at: string
   created_by: string | null
   articles_count?: number
+  normalized_key?: string | null
+  location_type?: string
+  parent_location_id?: string | null
+  is_active?: boolean
+  is_stock_transit?: boolean
 }
 
 export type Article = {
@@ -72,6 +102,13 @@ export type Article = {
   min_stock: number
   sellable_without_transformation: boolean
   usable_in_recipes: boolean
+  normalized_key?: string | null
+  nature: ArticleNature
+  stockable: boolean
+  locations_restricted: boolean
+  durable_equipment: boolean
+  indicative_price: number | null
+  indicative_price_note: string | null
   status: ArticleStatus
   created_at: string
   updated_at: string
@@ -113,8 +150,18 @@ export const articleSchema = z.object({
   min_stock: z.number().min(0, 'Le stock minimum doit etre positif'),
   sellable_without_transformation: z.boolean(),
   usable_in_recipes: z.boolean(),
+  nature: z.enum(articleNatures),
+  stockable: z.boolean(),
+  locations_restricted: z.boolean(),
+  durable_equipment: z.boolean(),
+  indicative_price: z.number().min(0, 'Le prix indicatif doit être positif').nullable(),
+  indicative_price_note: z.string().optional(),
   status: z.enum(articleStatuses),
-  location_ids: z.array(z.string()).min(1, 'Selectionnez au moins une localisation'),
+  location_ids: z.array(z.string()),
+}).superRefine((values, context) => {
+  if (values.stockable && values.locations_restricted && values.location_ids.length === 0) {
+    context.addIssue({ code: 'custom', path: ['location_ids'], message: 'Sélectionnez au moins une localisation ou désactivez la restriction' })
+  }
 })
 
 export type FamilyFormValues = z.infer<typeof familySchema>

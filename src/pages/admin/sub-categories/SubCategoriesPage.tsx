@@ -4,7 +4,9 @@ import type { ReactNode } from 'react'
 import { useCallback, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { createSubCategory, deleteSubCategory, listFamilies, listSubCategories, updateSubCategory } from '../../../api/modules/catalog.api'
+import { createSubCategory, deleteSubCategory, listFamilies, listSubCategories, setReferentialActive, updateSubCategory } from '../../../api/modules/catalog.api'
+import { getMyPinStatus } from '../../../api/modules/sensitiveActions.api'
+import { SensitiveActionModal } from '../../../components/SensitiveActionModal'
 import { useAuth } from '../../../hooks/useAuth'
 import { subCategorySchema } from '../../../lib/catalog'
 import type { Family, SubCategory, SubCategoryFormValues } from '../../../lib/catalog'
@@ -16,6 +18,9 @@ export function SubCategoriesPage() {
   const [search, setSearch] = useState('')
   const [editingSubCategory, setEditingSubCategory] = useState<SubCategory | null>(null)
   const [loading, setLoading] = useState(true)
+  const [pinDefined, setPinDefined] = useState(false)
+  const [subCategoryToDelete, setSubCategoryToDelete] = useState<SubCategory | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const form = useForm<SubCategoryFormValues>({
     resolver: zodResolver(subCategorySchema),
@@ -28,7 +33,7 @@ export function SubCategoriesPage() {
   const loadSubCategories = useCallback(async () => {
     setLoading(true)
     try {
-      setSubCategories(await listSubCategories(undefined, search))
+      setSubCategories(await listSubCategories(undefined, search, true))
     } catch {
       toast.error('Une erreur est survenue. Veuillez reessayer.')
     } finally {
@@ -37,7 +42,7 @@ export function SubCategoriesPage() {
   }, [search])
 
   useEffect(() => {
-    listFamilies()
+    listFamilies('', true)
       .then(setFamilies)
       .catch(() => toast.error('Impossible de charger les categories.'))
   }, [])
@@ -45,6 +50,10 @@ export function SubCategoriesPage() {
   useEffect(() => {
     loadSubCategories()
   }, [loadSubCategories])
+
+  useEffect(() => {
+    getMyPinStatus().then((status) => setPinDefined(status.pin_defined)).catch(() => setPinDefined(false))
+  }, [])
 
   const startEdit = (subCategory: SubCategory) => {
     setEditingSubCategory(subCategory)
@@ -78,19 +87,7 @@ export function SubCategoriesPage() {
     }
   }
 
-  const handleDelete = async (subCategory: SubCategory) => {
-    if (!window.confirm('Voulez-vous vraiment supprimer cette sous-categorie ?')) {
-      return
-    }
-
-    try {
-      await deleteSubCategory(subCategory.id)
-      toast.success('Sous-categorie supprimee avec succes')
-      await loadSubCategories()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Cette sous-categorie est utilisee par des articles et ne peut pas etre supprimee')
-    }
-  }
+  const handleDelete = (subCategory: SubCategory) => setSubCategoryToDelete(subCategory)
 
   return (
     <div className="space-y-6">
@@ -172,6 +169,38 @@ export function SubCategoriesPage() {
           )}
         </div>
       </section>
+      <SensitiveActionModal
+        open={Boolean(subCategoryToDelete)}
+        title={subCategoryToDelete?.is_active === false ? 'Réactiver la sous-catégorie' : (subCategoryToDelete?.articles_count ?? 0) > 0 ? 'Désactiver la sous-catégorie utilisée' : 'Supprimer une sous-catégorie inutilisée'}
+        description={(subCategoryToDelete?.articles_count ?? 0) > 0 ? 'La sous-catégorie reste dans l’historique.' : 'La suppression physique est refusée dès qu’un article l’utilise.'}
+        permissionLabel={subCategoryToDelete?.is_active === false ? 'referentials.reactivate' : (subCategoryToDelete?.articles_count ?? 0) > 0 ? 'referentials.deactivate' : 'referentials.delete_unused'}
+        pinDefined={pinDefined}
+        requireReason
+        busy={deleting}
+        onCancel={() => setSubCategoryToDelete(null)}
+        onConfirm={async ({ pin, reason }) => {
+          if (!subCategoryToDelete) return
+          setDeleting(true)
+          try {
+            if (subCategoryToDelete.is_active === false) {
+              await setReferentialActive('sub_category', subCategoryToDelete.id, true, pin, reason)
+              toast.success('Sous-catégorie réactivée et auditée.')
+            } else if ((subCategoryToDelete.articles_count ?? 0) > 0) {
+              await setReferentialActive('sub_category', subCategoryToDelete.id, false, pin, reason)
+              toast.success('Sous-catégorie désactivée et auditée.')
+            } else {
+              await deleteSubCategory(subCategoryToDelete.id, pin, reason)
+              toast.success('Sous-catégorie supprimée et auditée.')
+            }
+            setSubCategoryToDelete(null)
+            await loadSubCategories()
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Suppression impossible')
+          } finally {
+            setDeleting(false)
+          }
+        }}
+      />
     </div>
   )
 }

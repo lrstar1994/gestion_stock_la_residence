@@ -32,6 +32,7 @@ export async function getDirectionDashboard(filters: DashboardFilters = {}): Pro
   const month = resolvePeriod({ period: 'month' })
   const thirtyDays = dateRangeFromDays(29)
   const twelveMonths = dateRangeFromMonths(11)
+  const safe = <T,>(promise: Promise<T>, fallback: T) => promise.catch(() => fallback)
 
   const [
     stockRows,
@@ -54,25 +55,25 @@ export async function getDirectionDashboard(filters: DashboardFilters = {}): Pro
     purchaseItems,
     stockMovements12Months,
   ] = await Promise.all([
-    listStock(),
-    listSales({ fromDate: period.from, toDate: period.to, page: 1, pageSize: 10000, status: 'validee' }),
-    listSales({ fromDate: today, toDate: today, page: 1, pageSize: 1000, status: 'validee' }),
-    listSales({ fromDate: month.from, toDate: month.to, page: 1, pageSize: 10000, status: 'validee' }),
-    listPurchaseOrders({ fromDate: month.from, toDate: month.to, page: 1, pageSize: 10000 }),
-    listCashPurchases({ page: 1, pageSize: 10000 }),
-    listInvoices({ page: 1, pageSize: 10000 }),
-    listReceptions({ page: 1, pageSize: 10000 }),
-    listPurchaseNeedsGlobal({ page: 1, pageSize: 10000 }),
-    listPurchaseOrders({ page: 1, pageSize: 10000 }),
-    listStockOuts({ fromDate: period.from, toDate: period.to, page: 1, pageSize: 10000 }),
-    listStockOuts({ fromDate: month.from, toDate: month.to, page: 1, pageSize: 10000 }),
-    listStockOuts({ fromDate: today, toDate: today, page: 1, pageSize: 1000 }),
-    listMovements({ page: 1, pageSize: 10000 }),
-    listInitialInventoryStatus(),
-    getSalesStats({ fromDate: period.from, toDate: period.to }),
-    getSalesStats({ fromDate: thirtyDays.from, toDate: thirtyDays.to }),
-    listPurchaseItems(twelveMonths.from, period.to),
-    listStockMovements(twelveMonths.from, period.to),
+    safe(listStock(), [] as Awaited<ReturnType<typeof listStock>>),
+    safe(listSales({ fromDate: period.from, toDate: period.to, page: 1, pageSize: 10000, status: 'validee' }), { sales: [], total: 0 }),
+    safe(listSales({ fromDate: today, toDate: today, page: 1, pageSize: 1000, status: 'validee' }), { sales: [], total: 0 }),
+    safe(listSales({ fromDate: month.from, toDate: month.to, page: 1, pageSize: 10000, status: 'validee' }), { sales: [], total: 0 }),
+    safe(listPurchaseOrders({ fromDate: month.from, toDate: month.to, page: 1, pageSize: 10000 }), { orders: [], total: 0 }),
+    safe(listCashPurchases({ page: 1, pageSize: 10000 }), { purchases: [], total: 0 }),
+    safe(listInvoices({ page: 1, pageSize: 10000 }), { invoices: [], total: 0 }),
+    safe(listReceptions({ page: 1, pageSize: 10000 }), { receptions: [], total: 0 }),
+    safe(listPurchaseNeedsGlobal({ page: 1, pageSize: 10000 }), { needs: [], total: 0 }),
+    safe(listPurchaseOrders({ page: 1, pageSize: 10000 }), { orders: [], total: 0 }),
+    safe(listStockOuts({ fromDate: period.from, toDate: period.to, page: 1, pageSize: 10000 }), { stockOuts: [], total: 0 }),
+    safe(listStockOuts({ fromDate: month.from, toDate: month.to, page: 1, pageSize: 10000 }), { stockOuts: [], total: 0 }),
+    safe(listStockOuts({ fromDate: today, toDate: today, page: 1, pageSize: 1000 }), { stockOuts: [], total: 0 }),
+    safe(listMovements({ page: 1, pageSize: 10000 }), { movements: [], total: 0 }),
+    safe(listInitialInventoryStatus(), []),
+    safe(getSalesStats({ fromDate: period.from, toDate: period.to }), { byArticle: [], byFamily: [], byChannel: [], byService: [], byPoint: [], byDay: [], byMonth: [], offers: [], summary: { salesCount: 0, revenue: 0, averageBasket: 0, offeredValue: 0, returnedQuantity: 0 } }),
+    safe(getSalesStats({ fromDate: thirtyDays.from, toDate: thirtyDays.to }), { byArticle: [], byFamily: [], byChannel: [], byService: [], byPoint: [], byDay: [], byMonth: [], offers: [], summary: { salesCount: 0, revenue: 0, averageBasket: 0, offeredValue: 0, returnedQuantity: 0 } }),
+    safe(listPurchaseItems(twelveMonths.from, period.to), []),
+    safe(listStockMovements(twelveMonths.from, period.to), []),
   ])
 
   const periodSales = periodSalesResult.sales
@@ -101,7 +102,7 @@ export async function getDirectionDashboard(filters: DashboardFilters = {}): Pro
   const activeCashAdvances = cashPurchases.filter((purchase) => !['cloture', 'refuse'].includes(purchase.status))
   const unregularizedAdvances = cashPurchases.filter((purchase) => ['especes_remises', 'retour_partiel', 'retour_complet'].includes(purchase.status) && purchase.status !== 'cloture')
   const anomalyReceptions = receptions.filter((reception) => reception.status === 'validee_avec_anomalies')
-  const pendingInventoryCorrections = await countPendingInventoryCorrections()
+  const pendingInventoryCorrections = await safe(countPendingInventoryCorrections(), 0)
 
   return {
     period,
@@ -127,7 +128,7 @@ export async function getDirectionDashboard(filters: DashboardFilters = {}): Pro
       ordersToReceive: orders.filter((order) => ['envoyee', 'partiellement_livree', 'reception_avec_ecart'].includes(order.status)).length,
       invoicesToPay: invoicesToPay.length,
       overdueInvoices: overdueInvoices.length,
-      unresolvedReceptionAnomalies: await countUnresolvedReceptionAnomalies(),
+      unresolvedReceptionAnomalies: await safe(countUnresolvedReceptionAnomalies(), 0),
       pendingRetroactiveMovements: movements.filter((movement) => movement.status === 'en_attente' || (movement.is_retroactive && !movement.retroactive_validated_at)).length,
       pendingInventoryCorrections,
       initialInventoriesMissing: initialRows
@@ -165,7 +166,7 @@ export async function getDirectionDashboard(filters: DashboardFilters = {}): Pro
       unregularizedAdvances: unregularizedAdvances.slice(0, 8).map((purchase) => ({
         id: purchase.id,
         label: purchase.reference,
-        description: purchase.buyer?.full_name ?? purchase.reason,
+        description: purchase.buyer_directory?.full_name ?? purchase.buyer?.full_name ?? purchase.reason,
         amount: Number(purchase.difference ?? 0),
         status: purchase.status,
         date: purchase.request_date,

@@ -1,4 +1,6 @@
 import { supabase } from '../../lib/supabase'
+import { getArticleAllowedLocationIds } from '../../lib/articleLocations'
+import { listLocations } from './catalog.api'
 import { hasSignificantDifference, inventorySettings, summarizeInventory } from '../../lib/inventories'
 import type { InitialInventoryRow, Inventory, InventoryDashboard, InventoryFormValues, InventoryStatus, InventoryType } from '../../lib/inventories'
 
@@ -7,6 +9,7 @@ type InventoryFilters = {
   locationId?: string
   type?: InventoryType | 'all'
   status?: InventoryStatus | 'all'
+  statuses?: InventoryStatus[]
   fromDate?: string
   toDate?: string
   page?: number
@@ -28,14 +31,23 @@ export async function listInventories(filters: InventoryFilters = {}) {
     .from('inventories')
     .select('*, locations(id, name), creator:profiles!inventories_created_by_fkey(id, full_name), validator:profiles!inventories_validated_by_fkey(id, full_name), inventory_items(id)', { count: 'exact' })
     .order('inventory_date', { ascending: false })
+    .order('created_at', { ascending: false })
     .range(from, to)
 
   if (filters.locationId) query = query.eq('location_id', filters.locationId)
   if (filters.type && filters.type !== 'all') query = query.eq('type', filters.type)
-  if (filters.status && filters.status !== 'all') query = query.eq('status', filters.status)
+  if (filters.status && filters.status !== 'all') {
+    query = filters.status === 'brouillon'
+      ? query.in('status', ['brouillon', 'en_saisie'])
+      : query.eq('status', filters.status)
+  }
+  if (filters.statuses?.length) query = query.in('status', filters.statuses)
   if (filters.fromDate) query = query.gte('inventory_date', filters.fromDate)
   if (filters.toDate) query = query.lte('inventory_date', filters.toDate)
-  if (filters.search?.trim()) query = query.ilike('comment', `%${filters.search.trim()}%`)
+  if (filters.search?.trim()) {
+    const term = filters.search.trim()
+    query = query.or(`reference.ilike.%${term}%,comment.ilike.%${term}%`)
+  }
 
   const { data, error, count } = await query
   if (error) throw error
@@ -45,11 +57,48 @@ export async function listInventories(filters: InventoryFilters = {}) {
 export async function getInventory(id: string) {
   const { data, error } = await supabase.schema('stock')
     .from('inventories')
-    .select('*, locations(id, name), creator:profiles!inventories_created_by_fkey(id, full_name), validator:profiles!inventories_validated_by_fkey(id, full_name), inventory_items(*, articles(id, name, units(id, name, abbreviation)), units(id, name, abbreviation), stock_movements(id, movement_reference, quantity, unit_cost, total_cost)), inventory_adjustment_requests(*, articles(id, name), units(id, name, abbreviation), requester:profiles!inventory_adjustment_requests_requested_by_fkey(id, full_name), validator:profiles!inventory_adjustment_requests_validated_by_fkey(id, full_name), stock_movements(id, movement_reference, quantity, unit_cost, total_cost))')
+    .select('*, locations(id, name), creator:profiles!inventories_created_by_fkey(id, full_name), validator:profiles!inventories_validated_by_fkey(id, full_name), closer:profiles!inventories_closed_by_fkey(id, full_name), inventory_items(*, articles(id, name, units(id, name, abbreviation)), units(id, name, abbreviation), stock_movements(id, movement_reference, quantity, unit_cost, total_cost)), inventory_adjustment_requests(*, articles(id, name), units(id, name, abbreviation), requester:profiles!inventory_adjustment_requests_requested_by_fkey(id, full_name), validator:profiles!inventory_adjustment_requests_validated_by_fkey(id, full_name), stock_movements(id, movement_reference, quantity, unit_cost, total_cost))')
     .eq('id', id)
     .single()
-  if (error) throw error
-  return data as Inventory
+  if (!error) return data as Inventory
+  const fallback = await supabase.schema('stock')
+    .from('inventories')
+    .select('*, locations(id, name), inventory_items(*)')
+    .eq('id', id)
+    .single()
+  if (fallback.error) throw error
+  const raw = fallback.data as Inventory
+  const rows = raw.inventory_items ?? []
+  const articleIds = [...new Set(rows.map((item) => item.article_id).filter(Boolean))]
+  const unitIds = [...new Set(rows.map((item) => item.unit_id).filter(Boolean))]
+  const [{ data: articles }, { data: units }] = await Promise.all([
+    articleIds.length ? supabase.schema('stock').from('articles').select('id, name').in('id', articleIds) : Promise.resolve({ data: [] }),
+    unitIds.length ? supabase.schema('stock').from('units').select('id, name, abbreviation').in('id', unitIds) : Promise.resolve({ data: [] }),
+  ])
+  const articleById = new Map((articles ?? []).map((article) => [article.id, article]))
+  const unitById = new Map((units ?? []).map((unit) => [unit.id, unit]))
+  raw.inventory_items = rows.map((item) => ({ ...item, articles: item.articles ?? articleById.get(item.article_id), units: item.units ?? unitById.get(item.unit_id) }))
+  return raw
+}
+
+export async function listInventoriesForFinalReview() {
+  const pageSize = 100
+  const statuses: InventoryStatus[] = ['en_attente', 'valide', 'corrige', 'corrections_generees']
+  const inventories: Inventory[] = []
+  let page = 1
+  let total: number
+
+  do {
+    const result = await listInventories({ statuses, page, pageSize })
+    inventories.push(...result.inventories)
+    total = result.total
+    if (result.inventories.length === 0 && inventories.length < total) {
+      throw new Error('Impossible de charger toutes les validations d’inventaire')
+    }
+    page += 1
+  } while (inventories.length < total)
+
+  return { inventories, total }
 }
 
 export async function prepareInventoryItems(locationId: string) {
@@ -59,10 +108,11 @@ export async function prepareInventoryItems(locationId: string) {
     .eq('location_id', locationId)
   if (stockError) throw stockError
 
-  const { data: allowedArticles, error: allowedError } = await supabase.schema('stock')
-    .from('article_locations')
-    .select('article_id, articles(id, name, unit_id, status, families(id, name), units(id, name, abbreviation))')
-    .eq('location_id', locationId)
+  const { data: candidateArticles, error: allowedError } = await supabase.schema('stock')
+    .from('articles')
+    .select('id, name, unit_id, status, stockable, locations_restricted, families(id, name), units(id, name, abbreviation), article_locations(location_id)')
+    .eq('status', 'active')
+    .eq('stockable', true)
   if (allowedError) throw allowedError
 
   const stockByArticle = new Map<string, { quantity: number; unit_id: string }>()
@@ -78,17 +128,21 @@ export async function prepareInventoryItems(locationId: string) {
   if (priceError) throw priceError
   const priceByArticle = new Map((prices ?? []).map((row) => [row.article_id, Number(row.average_price ?? row.last_price ?? 0)]))
 
-  return (allowedArticles ?? [])
-    .flatMap((row) => {
-      const article = Array.isArray(row.articles) ? row.articles[0] : row.articles
-      if (!article || article.status === 'archived') return []
+  return (candidateArticles ?? [])
+    .flatMap((article) => {
+      const allowedIds = getArticleAllowedLocationIds(
+        article.locations_restricted,
+        article.article_locations?.map((link) => link.location_id) ?? [],
+        [locationId],
+      )
+      if (!allowedIds.includes(locationId)) return []
       const unit = Array.isArray(article.units) ? article.units[0] : article.units
       const family = Array.isArray(article.families) ? article.families[0] : article.families
       const stock = stockByArticle.get(article.id)
       return [{
         article_id: article.id,
         theoretical_quantity: Number(stock?.quantity ?? 0),
-        counted_quantity: Number(stock?.quantity ?? 0),
+        counted_quantity: null,
         unit_id: stock?.unit_id ?? article.unit_id,
         unit_price: priceByArticle.get(article.id) ?? 0,
         reason: '',
@@ -99,11 +153,14 @@ export async function prepareInventoryItems(locationId: string) {
     })
 }
 
-export async function createInventory(values: InventoryFormValues, profileId: string, role?: string) {
+export async function createInventory(values: InventoryFormValues, profileId: string, submission: 'draft' | 'submit' = 'draft') {
   validateInventoryValues(values)
   const summary = summarizeInventory(values.items)
+  if (submission === 'submit' && values.items.some((item) => item.counted_quantity === null)) {
+    throw new Error('Toutes les lignes doivent être comptées ou explicitement marquées avant soumission')
+  }
   const significant = values.type === 'initial' || values.items.some((item) => hasSignificantDifference(item, inventorySettings.validationThresholdPercent))
-  const status = role === 'direction' || !significant ? 'valide' : 'en_attente'
+  const status = submission === 'draft' ? 'brouillon' : significant ? 'a_valider_direction' : 'en_attente'
 
   const { data, error } = await supabase.schema('stock')
     .from('inventories')
@@ -117,8 +174,9 @@ export async function createInventory(values: InventoryFormValues, profileId: st
       total_difference: summary.total,
       total_value_difference: summary.value,
       status,
-      validated_by: status === 'valide' ? profileId : null,
-      validated_at: status === 'valide' ? new Date().toISOString() : null,
+      submitted_by: submission === 'submit' ? profileId : null,
+      submitted_at: submission === 'submit' ? new Date().toISOString() : null,
+      retroactive_reason: values.inventory_date < new Date().toISOString().slice(0, 10) ? cleanNullable(values.comment) : null,
       created_by: profileId,
       updated_by: profileId,
     })
@@ -126,8 +184,88 @@ export async function createInventory(values: InventoryFormValues, profileId: st
     .single()
   if (error) throw error
 
-  const rows = values.items.map((item) => ({
-    inventory_id: data.id,
+  const rows = inventoryRowsForSave(data.id, values.items, submission)
+  if (rows.length === 0 && submission === 'draft') {
+    return { id: data.id as string, pendingValidation: false, status }
+  }
+  const { error: insertItemsError } = await supabase.schema('stock').from('inventory_items').insert(rows)
+  if (insertItemsError) throw insertItemsError
+
+  return { id: data.id as string, pendingValidation: submission === 'submit', status }
+}
+
+export async function updateInventoryDraft(id: string, values: InventoryFormValues, profileId: string, submission: 'draft' | 'submit' = 'draft') {
+  validateInventoryValues(values)
+  const current = await getInventory(id)
+  if (!['brouillon', 'en_saisie', 'saisi'].includes(current.status)) {
+    throw new Error('Cet inventaire ne peut plus etre modifie')
+  }
+  if (current.location_id !== values.location_id) {
+    throw new Error('La localisation du brouillon ne peut pas etre modifiee')
+  }
+  if (submission === 'submit' && values.items.some((item) => item.counted_quantity === null)) {
+    throw new Error('Toutes les lignes doivent etre comptees ou explicitement marquees avant soumission')
+  }
+
+  const summary = summarizeInventory(values.items)
+  const significant = values.type === 'initial' || values.items.some((item) => hasSignificantDifference(item, inventorySettings.validationThresholdPercent))
+  const status = submission === 'draft' ? 'brouillon' : significant ? 'a_valider_direction' : 'en_attente'
+  const { error } = await supabase.schema('stock')
+    .from('inventories')
+    .update({
+      inventory_date: values.inventory_date,
+      type: values.type,
+      comment: cleanNullable(values.comment),
+      total_positive_difference: summary.positive,
+      total_negative_difference: summary.negative,
+      total_difference: summary.total,
+      total_value_difference: summary.value,
+      status,
+      submitted_by: submission === 'submit' ? profileId : null,
+      submitted_at: submission === 'submit' ? new Date().toISOString() : null,
+      retroactive_reason: values.inventory_date < new Date().toISOString().slice(0, 10) ? cleanNullable(values.comment) : null,
+      updated_by: profileId,
+    })
+    .eq('id', id)
+  if (error) throw error
+
+  const existingByArticle = new Map((current.inventory_items ?? []).map((item) => [item.article_id, item]))
+  const rowsToInsert = []
+  for (const item of values.items) {
+    const shouldPersistDraftLine = submission === 'submit' || item.counted_quantity !== null
+    if (!shouldPersistDraftLine) continue
+    const existing = existingByArticle.get(item.article_id)
+    const row = {
+      theoretical_quantity: item.theoretical_quantity,
+      counted_quantity: item.counted_quantity,
+      unit_id: item.unit_id,
+      unit_price: item.unit_price,
+      reason: cleanNullable(item.reason),
+    }
+    if (existing?.id) {
+      const { error: updateItemError } = await supabase.schema('stock').from('inventory_items').update(row).eq('id', existing.id)
+      if (updateItemError) throw updateItemError
+    } else {
+      rowsToInsert.push({
+        inventory_id: id,
+        article_id: item.article_id,
+        ...row,
+      })
+    }
+  }
+  if (rowsToInsert.length > 0) {
+    const { error: insertItemsError } = await supabase.schema('stock').from('inventory_items').insert(rowsToInsert)
+    if (insertItemsError) throw insertItemsError
+  }
+
+  return { id, pendingValidation: submission === 'submit', status }
+}
+
+function inventoryRowsForSave(inventoryId: string, items: InventoryFormValues['items'], submission: 'draft' | 'submit') {
+  return items
+    .filter((item) => submission === 'submit' || item.counted_quantity !== null)
+    .map((item) => ({
+    inventory_id: inventoryId,
     article_id: item.article_id,
     theoretical_quantity: item.theoretical_quantity,
     counted_quantity: item.counted_quantity,
@@ -135,25 +273,15 @@ export async function createInventory(values: InventoryFormValues, profileId: st
     unit_price: item.unit_price,
     reason: cleanNullable(item.reason),
   }))
-  const { error: insertItemsError } = await supabase.schema('stock').from('inventory_items').insert(rows)
-  if (insertItemsError) throw insertItemsError
-
-  if (status === 'valide') await createInventoryCorrections(data.id, profileId)
-  return { id: data.id as string, pendingValidation: status === 'en_attente' }
 }
 
-export async function validateInventory(id: string, profileId: string, comment = '') {
-  const inventory = await getInventory(id)
-  if (inventory.status === 'valide' || inventory.status === 'corrige') throw new Error('Cet inventaire a deja ete valide')
-  for (const item of inventory.inventory_items ?? []) {
-    if (hasSignificantDifference(item, inventorySettings.mandatoryReasonThresholdPercent) && !item.reason?.trim()) throw new Error('Veuillez saisir un motif pour cet ecart')
-  }
-  const { error } = await supabase.schema('stock')
-    .from('inventories')
-    .update({ status: 'valide', validated_by: profileId, validated_at: new Date().toISOString(), validation_comment: cleanNullable(comment), updated_by: profileId })
-    .eq('id', id)
+export async function validateInventory(id: string, pin: string, comment = '') {
+  const { error } = await supabase.schema('stock').rpc('validate_inventory_with_pin', {
+    p_inventory_id: id,
+    p_pin: pin,
+    p_comment: cleanNullable(comment),
+  })
   if (error) throw error
-  await createInventoryCorrections(id, profileId)
 }
 
 export async function createInventoryCorrections(id: string, profileId: string) {
@@ -224,34 +352,45 @@ async function listInventoryDifferenceItems() {
 }
 
 export async function listInitialInventoryStatus(): Promise<InitialInventoryRow[]> {
-  const { data: allowed, error: allowedError } = await supabase.schema('stock')
-    .from('article_locations')
-    .select('article_id, location_id, articles(id, name, units(id, abbreviation)), locations(id, name)')
-  if (allowedError) throw allowedError
+  const [locations, articlesResult] = await Promise.all([
+    listLocations(),
+    supabase.schema('stock')
+      .from('articles')
+      .select('id, name, unit_id, locations_restricted, units(id, abbreviation), article_locations(location_id)')
+      .eq('status', 'active')
+      .eq('stockable', true),
+  ])
+  if (articlesResult.error) throw articlesResult.error
 
   const { data: initialInventories, error: inventoryError } = await supabase.schema('stock')
     .from('inventories')
     .select('id, location_id, inventory_date, status, inventory_items(article_id)')
     .eq('type', 'initial')
-    .in('status', ['valide', 'corrige'])
+    .order('inventory_date', { ascending: false })
   if (inventoryError) throw inventoryError
 
-  return (allowed ?? []).map((row) => {
-    const article = Array.isArray(row.articles) ? row.articles[0] : row.articles
-    const location = Array.isArray(row.locations) ? row.locations[0] : row.locations
-    const match = (initialInventories ?? []).find((inventory) => inventory.location_id === row.location_id && inventory.inventory_items?.some((item) => item.article_id === row.article_id))
-    return {
-      article_id: row.article_id,
-      article_name: article?.name ?? '',
-      location_id: row.location_id,
-      location_name: location?.name ?? '',
-      unit_name: (() => {
-        const units = (article as { units?: Array<{ abbreviation?: string }> } | undefined)?.units
-        return (Array.isArray(units) ? units[0]?.abbreviation : undefined) ?? ''
-      })(),
-      status: match ? 'stock_initial_confirme' : 'non_inventorie',
-      last_inventory_date: match?.inventory_date ?? null,
-    }
+  return (articlesResult.data ?? []).flatMap((article) => {
+    const allowedIds = getArticleAllowedLocationIds(
+      article.locations_restricted,
+      article.article_locations?.map((link) => link.location_id) ?? [],
+      locations.map((location) => location.id),
+    )
+    return locations.filter((location) => allowedIds.includes(location.id)).map((location) => {
+      const match = (initialInventories ?? []).find((inventory) => inventory.location_id === location.id && inventory.inventory_items?.some((item) => item.article_id === article.id))
+      const confirmed = match && ['valide', 'corrige', 'corrections_generees', 'cloture'].includes(match.status)
+      const submitted = match && ['saisi', 'en_attente', 'a_controler', 'a_valider_direction', 'en_attente_validation', 'validation_direction_requise'].includes(match.status)
+      const units = Array.isArray(article.units) ? article.units : article.units ? [article.units] : []
+      return {
+        article_id: article.id,
+        article_name: article.name ?? '',
+        location_id: location.id,
+        location_name: location.name,
+        unit_name: units[0]?.abbreviation ?? '',
+        inventory_id: match?.id ?? null,
+        status: confirmed ? 'stock_initial_confirme' : submitted ? 'a_controler' : match ? 'stock_initial_non_confirme' : 'non_inventorie',
+        last_inventory_date: match?.inventory_date ?? null,
+      }
+    })
   })
 }
 
@@ -289,52 +428,27 @@ export async function requestInventoryAdjustment(params: {
   if (error) throw error
 }
 
-export async function validateInventoryAdjustment(id: string, profileId: string, comment = '') {
-  const { data: request, error } = await supabase.schema('stock')
-    .from('inventory_adjustment_requests')
-    .select('*, inventories(reference, inventory_date)')
-    .eq('id', id)
-    .single()
+export async function validateInventoryAdjustment(id: string, pin: string, comment = '') {
+  const { error } = await supabase.schema('stock').rpc('validate_inventory_adjustment_with_pin', {
+    p_request_id: id,
+    p_pin: pin,
+    p_comment: cleanNullable(comment),
+  })
   if (error) throw error
-  if (request.status !== 'en_attente') throw new Error('Cette demande a deja ete traitee')
-  const difference = Number(request.proposed_counted_quantity ?? 0) - Number(request.original_counted_quantity ?? 0)
-  if (difference === 0) throw new Error('Aucun ajustement a creer')
+}
 
-  const { data: movement, error: movementError } = await supabase.schema('stock')
-    .from('stock_movements')
-    .insert({
-      article_id: request.article_id,
-      quantity: difference,
-      unit_id: request.unit_id,
-      movement_type: 'ajustement',
-      to_location_id: request.location_id,
-      movement_date: request.inventories?.inventory_date ?? new Date().toISOString().slice(0, 10),
-      status: 'valide',
-      is_manual: true,
-      manual_reason: request.reason,
-      manual_validated_by: profileId,
-      manual_validated_at: new Date().toISOString(),
-      unit_cost: Number(request.unit_price ?? 0),
-      price_source: 'correction',
-      comment: `Ajustement apres inventaire ${request.inventories?.reference ?? ''}`,
-      reference_type: 'inventaire_ajustement',
-      reference_id: request.inventory_id,
-      created_by: profileId,
-      updated_by: profileId,
-    })
-    .select('id')
-    .single()
-  if (movementError) throw movementError
-
-  const { error: updateError } = await supabase.schema('stock')
-    .from('inventory_adjustment_requests')
-    .update({ status: 'valide', stock_movement_id: movement.id, validated_by: profileId, validated_at: new Date().toISOString(), validation_comment: cleanNullable(comment) })
-    .eq('id', id)
-  if (updateError) throw updateError
+export async function closeInventory(id: string, pin: string, comment = '') {
+  const { error } = await supabase.schema('stock').rpc('close_inventory_with_pin', {
+    p_inventory_id: id,
+    p_pin: pin,
+    p_comment: cleanNullable(comment),
+  })
+  if (error) throw error
 }
 
 function validateInventoryValues(values: InventoryFormValues) {
   for (const item of values.items) {
+    if (item.counted_quantity === null) continue
     if (Number(item.counted_quantity) < 0) throw new Error('La quantite comptee ne peut pas etre negative')
     const difference = Math.abs(Number(item.counted_quantity) - Number(item.theoretical_quantity))
     const theoretical = Math.abs(Number(item.theoretical_quantity))

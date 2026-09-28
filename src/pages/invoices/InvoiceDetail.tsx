@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { closeInvoice, contestInvoice, executeInvoicePayment, getInvoice, prepareInvoicePayment, refuseInvoicePayment, validateInvoicePayment, validateInvoiceRecord } from '../../api/modules/invoices.api'
+import { getPurchaseReportingReception, roleMayReadPurchaseReceptionReports } from '../../api/modules/purchaseReporting.api'
 import { useAuth } from '../../hooks/useAuth'
 import { exportInvoiceToPdf } from '../../lib/invoiceExports'
 import { canExecuteInvoicePayments, canManageInvoices, canPrepareInvoicePayments, canValidateInvoicePayments, invoicePaymentStatusLabels, invoiceStatusLabels, paymentModeLabels, paymentModes } from '../../lib/invoices'
@@ -16,6 +17,7 @@ export function InvoiceDetail() {
   const navigate = useNavigate()
   const { profile } = useAuth()
   const [invoice, setInvoice] = useState<Invoice | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [payment, setPayment] = useState<InvoicePaymentFormValues>({ amount: 0, payment_mode: 'virement', payment_date: today, payment_reference: '', comment: '' })
   const [executionPaymentId, setExecutionPaymentId] = useState<string | null>(null)
   const canManage = canManageInvoices(profile?.role)
@@ -25,17 +27,28 @@ export function InvoiceDetail() {
 
   const load = useCallback(async () => {
     if (!id) return
-    setInvoice(await getInvoice(id))
-  }, [id])
+    const loaded = await getInvoice(id)
+    if (loaded.reception_id && roleMayReadPurchaseReceptionReports(profile?.role)) {
+      const reception = await getPurchaseReportingReception(loaded.reception_id, profile?.role)
+      loaded.receptions = reception ? {
+        id: reception.id, reference: reception.reference, invoice_number: reception.invoice_number ?? '',
+        total_amount: reception.total_amount,
+      } : undefined
+    }
+    setInvoice(loaded)
+    setLoadError(null)
+  }, [id, profile?.role])
 
   useEffect(() => {
-    load().catch(() => {
-      toast.error('Facture introuvable')
-      navigate('/invoices')
+    load().catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Erreur technique de chargement.'
+      setLoadError(message)
+      toast.error(`Impossible de charger la facture : ${message}`)
     })
   }, [load, navigate])
 
-  if (!invoice) return <div className="surface p-6 text-sm text-slate-600">Chargement...</div>
+  if (!invoice) return <div role={loadError ? 'alert' : undefined} className={`surface p-6 text-sm ${loadError ? 'text-red-700' : 'text-slate-600'}`}>{loadError ? `Impossible de charger la facture : ${loadError}` : 'Chargement...'}</div>
+  const relay = getInvoiceRelay(invoice.status, Boolean(invoice.file_url))
 
   const validate = async () => {
     const comment = window.prompt('Commentaire de validation (optionnel)') ?? ''
@@ -146,6 +159,18 @@ export function InvoiceDetail() {
         <Metric label="Echeance" value={new Date(invoice.due_date).toLocaleDateString('fr-FR')} />
       </section>
 
+      <section className="surface p-5">
+        <p className="eyebrow">Relais du dossier</p>
+        <div className="mt-4 grid gap-3 md:grid-cols-5">
+          <RelayInfo label="ÉTAPE ACTUELLE" value={relay.stage} />
+          <RelayInfo label="Responsable actuel" value={relay.owner} />
+          <RelayInfo label="Action attendue" value={relay.action} />
+          <RelayInfo label="Prochain responsable" value={relay.nextOwner} />
+          <RelayInfo label="Prochain statut" value={relay.nextStatus} />
+        </div>
+        {relay.alert && <p className="mt-4 text-sm font-bold text-amber-800">{relay.alert}</p>}
+      </section>
+
       <section className="grid gap-4 md:grid-cols-2">
         <div className="surface p-5">
           <p className="eyebrow">Lecture comptable et fiscale</p>
@@ -175,7 +200,7 @@ export function InvoiceDetail() {
         <Info label="Numero facture fournisseur" value={invoice.invoice_number} />
         <Info label="Date facture" value={new Date(invoice.invoice_date).toLocaleDateString('fr-FR')} />
         <Info label="Mode de paiement prevu" value={invoice.payment_mode ? paymentModeLabels[invoice.payment_mode] : '-'} />
-        {invoice.receptions ? <InfoLink label="Reception rattachee" value={invoice.receptions.reference} to={`/receptions/${invoice.receptions.id}`} /> : <Info label="Reception rattachee" value="-" />}
+        {invoice.receptions && profile?.role === 'caisse' ? <Info label="Reception marchandises rattachee" value={invoice.receptions.reference} /> : invoice.receptions ? <InfoLink label="Reception marchandises rattachee" value={invoice.receptions.reference} to={`/receptions/${invoice.receptions.id}`} /> : <Info label="Reception marchandises rattachee" value="-" />}
         <Info label="Validation" value={invoice.validated_at ? `${new Date(invoice.validated_at).toLocaleString('fr-FR')} - ${invoice.validator?.full_name || ''}` : '-'} />
         {invoice.file_url && <a href={invoice.file_url} target="_blank" className="font-semibold text-[#1E3A8A]">Voir piece jointe : {invoice.file_name}</a>}
         {invoice.comment && <div className="md:col-span-2"><Info label="Commentaire" value={invoice.comment} /></div>}
@@ -191,9 +216,9 @@ export function InvoiceDetail() {
 
       {invoice.receptions && Math.abs(Number(invoice.amount_ttc ?? 0) - Number(invoice.receptions.total_amount ?? 0)) > 0.01 && (
         <section className="surface border border-orange-200 bg-orange-50 p-5">
-          <h2 className="font-bold text-orange-900">Ecart facture / reception</h2>
+          <h2 className="font-bold text-orange-900">Ecart facture / reception marchandises</h2>
           <p className="mt-1 text-sm text-orange-800">
-            Reception : {Number(invoice.receptions.total_amount ?? 0).toLocaleString('fr-FR')} Ar · Facture : {Number(invoice.amount_ttc ?? 0).toLocaleString('fr-FR')} Ar · Ecart : {(Number(invoice.amount_ttc ?? 0) - Number(invoice.receptions.total_amount ?? 0)).toLocaleString('fr-FR')} Ar
+            Reception : {Number(invoice.receptions.total_amount ?? 0).toLocaleString('fr-FR')} Ar Â· Facture : {Number(invoice.amount_ttc ?? 0).toLocaleString('fr-FR')} Ar Â· Ecart : {(Number(invoice.amount_ttc ?? 0) - Number(invoice.receptions.total_amount ?? 0)).toLocaleString('fr-FR')} Ar
           </p>
         </section>
       )}
@@ -308,4 +333,16 @@ function Info({ label, value }: { label: string; value: string }) {
 
 function InfoLink({ label, value, to }: { label: string; value: string; to: string }) {
   return <div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</p><Link to={to} className="mt-1 inline-block font-semibold text-[#1E3A8A] hover:underline">{value}</Link></div>
+}
+
+function RelayInfo({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-md border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-bold uppercase text-slate-500">{label}</p><p className="mt-1 text-sm font-bold text-slate-900">{value}</p></div>
+}
+
+function getInvoiceRelay(status: Invoice['status'], hasDocument: boolean) {
+  if (status === 'a_verifier') return { stage: 'Controle de la facture fournisseur', owner: 'Controle (Direction / Comptabilite)', action: hasDocument ? 'Verifier les montants et la piece jointe' : 'Joindre la facture ou le justificatif', nextOwner: 'Comptabilite', nextStatus: 'Facture validee puis paiement a preparer', alert: hasDocument ? '' : 'Justificatif manquant / a regulariser.' }
+  if (status === 'conteste') return { stage: 'Arbitrage', owner: 'Direction', action: 'Arbitrer la contestation expliquee', nextOwner: 'Comptabilite', nextStatus: 'Facture corrigee ou annulee', alert: 'A arbitrer Direction.' }
+  if (status === 'validee' || status === 'a_payer' || status === 'partiellement_paye') return { stage: 'Paiement fournisseur', owner: 'Comptabilite / Caisse', action: status === 'validee' ? 'Preparer le paiement' : 'Executer ou completer le paiement autorise', nextOwner: 'Direction / Controle final', nextStatus: 'Facture payee puis classee', alert: '' }
+  if (status === 'payee') return { stage: 'Classement', owner: 'Direction / Controle final', action: 'Verifier puis cloturer le dossier', nextOwner: '-', nextStatus: 'Dossier classe', alert: '' }
+  return { stage: 'Dossier termine', owner: '-', action: 'Consulter l historique', nextOwner: '-', nextStatus: status === 'cloturee' ? 'Dossier classe' : 'Dossier annule', alert: '' }
 }

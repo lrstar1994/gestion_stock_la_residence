@@ -6,8 +6,11 @@ import { listArticles, listLocations } from '../../api/modules/catalog.api'
 import { listEvents } from '../../api/modules/events.api'
 import { createStockOut, loadStockOutItemsFromEvent } from '../../api/modules/stockOuts.api'
 import { getUnconfirmedInitialInventoryCount } from '../../api/modules/inventories.api'
+import { ArticleSearchSelect } from '../../components/articles/ArticleSearchSelect'
+import { QuickArticleDrawer } from '../../components/articles/QuickArticleDrawer'
 import { useAuth } from '../../hooks/useAuth'
 import type { Article, Location } from '../../lib/catalog'
+import { getArticleAllowedLocationIds } from '../../lib/articleLocations'
 import type { Event } from '../../lib/events'
 import { lossTypeLabels, lossTypes, stockOutDestinationLabels, stockOutDestinations } from '../../lib/stockOuts'
 import type { StockOutFormValues } from '../../lib/stockOuts'
@@ -31,6 +34,8 @@ export function StockOutFormPage() {
   const [locations, setLocations] = useState<Location[]>([])
   const [events, setEvents] = useState<Event[]>([])
   const [unconfirmedInitial, setUnconfirmedInitial] = useState(0)
+  const [quickArticleOpen, setQuickArticleOpen] = useState(false)
+  const [quickArticleIndex, setQuickArticleIndex] = useState<number | null>(null)
   const defaultLocationId = locations[0]?.id ?? ''
   const totalQuantity = useMemo(() => values.items.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0), [values.items])
 
@@ -46,7 +51,10 @@ export function StockOutFormPage() {
         setEvents(eventResult.events)
         if (loadedLocations[0]?.id) getUnconfirmedInitialInventoryCount(loadedLocations[0].id).then(setUnconfirmedInitial).catch(() => undefined)
       })
-      .catch(() => toast.error('Impossible de charger le formulaire.'))
+      .catch((error) => {
+        console.error('Erreur de chargement du formulaire de sortie de stock', error)
+        toast.error('Impossible de charger le formulaire.', { id: 'stock-out-form-load-error' })
+      })
   }, [])
 
   const selectEvent = async (eventId: string) => {
@@ -62,13 +70,12 @@ export function StockOutFormPage() {
   }
 
   const addItem = () => {
-    const article = articles[0]
     setValues((current) => ({
       ...current,
       items: [...current.items, {
-        article_id: article?.id ?? '',
+        article_id: '',
         quantity: 1,
-        unit_id: article?.unit_id ?? '',
+        unit_id: '',
         location_id: defaultLocationId,
         theoretical_quantity: 0,
         recipe_id: '',
@@ -90,8 +97,21 @@ export function StockOutFormPage() {
     updateItem(index, { article_id: articleId, unit_id: article?.unit_id ?? '' })
   }
 
+  const selectableArticlesFor = (locationId: string) => articles.filter((article) => !locationId || getArticleAllowedLocationIds(
+    article.locations_restricted,
+    article.article_locations?.map((link) => link.locations.id) ?? [],
+    locations.map((location) => location.id),
+  ).includes(locationId))
+
   const changeLocation = async (index: number, locationId: string) => {
-    updateItem(index, { location_id: locationId })
+    const item = values.items[index]
+    const article = articles.find((candidate) => candidate.id === item?.article_id)
+    const allowed = !article || !locationId || getArticleAllowedLocationIds(
+      article.locations_restricted,
+      article.article_locations?.map((link) => link.locations.id) ?? [],
+      locations.map((location) => location.id),
+    ).includes(locationId)
+    updateItem(index, { location_id: locationId, ...(allowed ? {} : { article_id: '', unit_id: '' }) })
     setUnconfirmedInitial(await getUnconfirmedInitialInventoryCount(locationId))
   }
 
@@ -122,7 +142,8 @@ export function StockOutFormPage() {
       </header>
 
       <section className="surface grid gap-4 p-5 md:grid-cols-2">
-        <label className="block"><span className="field-label">Depuis un evenement en production</span><select value={values.event_id} onChange={(event) => selectEvent(event.target.value)} className="input mt-2"><option value="">Saisie manuelle</option>{events.map((event) => <option key={event.id} value={event.id}>{event.name}</option>)}</select></label>
+        <label className="block"><span className="field-label">Depuis un événement en production</span><select value={values.event_id} onChange={(event) => selectEvent(event.target.value)} className="input mt-2"><option value="">{events.length === 0 ? 'Aucun événement de production disponible — saisie manuelle uniquement.' : 'Saisie manuelle'}</option>{events.map((event) => <option key={event.id} value={event.id}>{event.name}</option>)}</select></label>
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm"><p className="field-label">Service concerné</p><p className="mt-1 font-semibold">{stockOutDestinationLabels[values.destination]}</p><p className="mt-2 field-label">Responsable / demandeur</p><p className="mt-1">{profile?.full_name ?? 'Non renseigné'}</p></div>
         <label className="block"><span className="field-label">Date sortie</span><input type="date" value={values.out_date} onChange={(event) => setValues((current) => ({ ...current, out_date: event.target.value }))} className="input mt-2" /></label>
         <label className="block"><span className="field-label">Destination</span><select value={values.destination} onChange={(event) => setValues((current) => ({ ...current, destination: event.target.value as typeof values.destination }))} className="input mt-2">{stockOutDestinations.map((destination) => <option key={destination} value={destination}>{stockOutDestinationLabels[destination]}</option>)}</select></label>
         <label className="block"><span className="field-label">Motif</span><input value={values.reason} onChange={(event) => setValues((current) => ({ ...current, reason: event.target.value }))} className="input mt-2" /></label>
@@ -145,15 +166,15 @@ export function StockOutFormPage() {
             const selectedArticle = articles.find((article) => article.id === item.article_id)
             return (
               <div key={`${item.article_id}-${index}`} className="space-y-4 px-5 py-4">
-                <div className="grid gap-3 xl:grid-cols-[1fr_110px_110px_160px_130px_44px] xl:items-end">
-                  <label className="block"><span className="field-label">Article</span><select value={item.article_id} onChange={(event) => changeArticle(index, event.target.value)} className="input mt-2"><option value="">Article</option>{articles.map((article) => <option key={article.id} value={article.id}>{article.name}</option>)}</select></label>
-                  <label className="block"><span className="field-label">Theorique</span><input type="number" value={item.theoretical_quantity ?? 0} onChange={(event) => updateItem(index, { theoretical_quantity: Number(event.target.value) })} className="input mt-2" /></label>
-                  <label className="block"><span className="field-label">Reel</span><input type="number" value={item.quantity} onChange={(event) => updateItem(index, { quantity: Number(event.target.value) })} className="input mt-2" /></label>
-                  <label className="block"><span className="field-label">Localisation</span><select value={item.location_id} onChange={(event) => changeLocation(index, event.target.value)} className="input mt-2"><option value="">Selectionner</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
-                  <label className="block"><span className="field-label">Unite</span><select value={item.unit_id} onChange={(event) => updateItem(index, { unit_id: event.target.value })} className="input mt-2"><option value={selectedArticle?.unit_id ?? item.unit_id}>{selectedArticle?.units?.abbreviation ?? 'Unite'}</option></select></label>
+                <div className="grid gap-4 xl:grid-cols-[minmax(260px,1.6fr)_minmax(190px,1fr)_minmax(140px,0.8fr)_44px] xl:items-end">
+                  <label className="block"><span className="field-label">Article</span><div className="mt-2"><ArticleSearchSelect articles={selectableArticlesFor(item.location_id)} value={item.article_id} onChange={(articleId) => changeArticle(index, articleId)} onCreate={() => { setQuickArticleIndex(index); setQuickArticleOpen(true) }} /></div></label>
+                  <label className="block"><span className="field-label">Localisation / magasin</span><select value={item.location_id} onChange={(event) => changeLocation(index, event.target.value)} className="input mt-2"><option value="">Sélectionner</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+                  <label className="block"><span className="field-label">Stock disponible</span><input type="number" value={item.theoretical_quantity ?? 0} readOnly className="input mt-2 bg-slate-100" /></label>
                   <button type="button" onClick={() => removeItem(index)} className="btn-secondary text-red-700"><Trash2 className="h-4 w-4" /></button>
                 </div>
                 <div className="grid gap-3 md:grid-cols-4">
+                  <label className="block"><span className="field-label">Unité</span><input readOnly value={selectedArticle?.units?.abbreviation ?? ''} className="input mt-2 bg-slate-100" placeholder="Article d'abord" /></label>
+                  <label className="block"><span className="field-label">Quantité à sortir</span><input type="number" value={item.quantity} onChange={(event) => updateItem(index, { quantity: Number(event.target.value) })} className="input mt-2" /></label>
                   <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={item.is_additional} onChange={(event) => updateItem(index, { is_additional: event.target.checked })} /> Rajout</label>
                   <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={item.is_return} onChange={(event) => updateItem(index, { is_return: event.target.checked })} /> Retour</label>
                   <label className="block"><span className="field-label">Quantite retour</span><input type="number" disabled={!item.is_return} value={item.return_quantity ?? 0} onChange={(event) => updateItem(index, { return_quantity: Number(event.target.value) })} className="input mt-2" /></label>
@@ -172,6 +193,7 @@ export function StockOutFormPage() {
         <span className="text-sm text-slate-600">Quantite totale sortie</span>
         <span className="text-2xl font-black text-[#1E3A8A]">{totalQuantity.toLocaleString('fr-FR')}</span>
       </section>
+      <QuickArticleDrawer open={quickArticleOpen} profileId={profile?.id} defaultLocationId={quickArticleIndex === null ? defaultLocationId : values.items[quickArticleIndex]?.location_id || defaultLocationId} onClose={() => { setQuickArticleOpen(false); setQuickArticleIndex(null) }} onCreated={(article) => { setArticles((current) => [article, ...current.filter((item) => item.id !== article.id)]); if (quickArticleIndex !== null) updateItem(quickArticleIndex, { article_id: article.id, unit_id: article.unit_id }) }} />
     </form>
   )
 }

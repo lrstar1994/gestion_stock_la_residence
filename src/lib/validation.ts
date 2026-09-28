@@ -11,6 +11,8 @@ export const userRoles = [
   'point_vente',
   'maintenance',
   'consultation',
+  'controleur',
+  'administratif_achats',
 ] as const
 
 export const userStatuses = ['pending_validation', 'active', 'inactive', 'rejected'] as const
@@ -45,6 +47,8 @@ export const roleLabels: Record<UserRole, string> = {
   point_vente: 'Point de vente',
   maintenance: 'Maintenance',
   consultation: 'Consultation',
+  controleur: 'Contrôleur',
+  administratif_achats: 'Administratif Achats',
 }
 
 export const statusLabels: Record<UserStatus, string> = {

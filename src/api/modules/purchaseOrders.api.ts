@@ -32,7 +32,7 @@ export async function listPurchaseOrders(filters: PurchaseOrderFilters = {}) {
 
   let query = supabase.schema('stock')
     .from('purchase_orders')
-    .select('*, suppliers(*), creator:profiles!purchase_orders_created_by_fkey(id, full_name, role)', { count: 'exact' })
+    .select('*, suppliers(*), creator:profiles!purchase_orders_created_by_fkey(id, full_name, role), purchase_order_documents(id)', { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(from, to)
 
@@ -43,7 +43,7 @@ export async function listPurchaseOrders(filters: PurchaseOrderFilters = {}) {
   if (filters.toDate) query = query.lte('order_date', filters.toDate)
   if (filters.search?.trim()) {
     const term = filters.search.trim()
-    query = query.or(`reference.ilike.%${term}%,supplier_reference.ilike.%${term}%`)
+    query = query.or(`id.ilike.%${term}%,reference.ilike.%${term}%,supplier_reference.ilike.%${term}%`)
   }
 
   const { data, error, count } = await query
@@ -52,17 +52,29 @@ export async function listPurchaseOrders(filters: PurchaseOrderFilters = {}) {
 }
 
 export async function getPurchaseOrder(id: string) {
-  const { data, error } = await supabase.schema('stock')
-    .from('purchase_orders')
-    .select('*, suppliers(*), creator:profiles!purchase_orders_created_by_fkey(id, full_name, role), validator:profiles!purchase_orders_validated_by_fkey(id, full_name), sender:profiles!purchase_orders_sent_by_fkey(id, full_name), purchase_order_items(*, articles(id, name, unit_id, families(id, name), units(id, name, abbreviation)), units(id, name, abbreviation), stock_unit:units!purchase_order_items_stock_unit_id_fkey(id, name, abbreviation)), purchase_order_needs(*, purchase_needs(*, articles(id, name, families(id, name)), units(id, name, abbreviation), requester:profiles!purchase_needs_created_by_fkey(id, full_name))), purchase_order_history(*, actor:profiles!purchase_order_history_created_by_fkey(id, full_name)), purchase_order_documents(*)')
-    .eq('id', id)
-    .single()
-
-  if (error) throw error
-  return data as PurchaseOrder
+  const baseSelect = '*, suppliers(*), creator:profiles!purchase_orders_created_by_fkey(id, full_name, role)'
+  let query = await supabase.schema('stock').from('purchase_orders').select(baseSelect).eq('id', id).maybeSingle()
+  if (query.error) throw query.error
+  let order = query.data
+  if (!order) {
+    query = await supabase.schema('stock').from('purchase_orders').select(baseSelect).eq('reference', decodeURIComponent(id)).maybeSingle()
+    if (query.error) throw query.error
+    order = query.data
+  }
+  if (!order) {
+    const listed = await listPurchaseOrders({ search: decodeURIComponent(id), page: 1, pageSize: 10 })
+    order = listed.orders.find((candidate) => candidate.id === id || candidate.reference === decodeURIComponent(id)) ?? null
+  }
+  if (!order) throw new Error('Commande introuvable')
+  const { data: items, error: itemsError } = await supabase.schema('stock')
+    .from('purchase_order_items')
+    .select('*, articles(id, name, unit_id, families(id, name), units(id, name, abbreviation)), units(id, name, abbreviation), stock_unit:units!purchase_order_items_stock_unit_id_fkey(id, name, abbreviation)')
+    .eq('purchase_order_id', order.id)
+  if (itemsError) throw itemsError
+  return { ...order, purchase_order_items: items ?? [] } as PurchaseOrder
 }
-
 export async function createPurchaseOrder(values: PurchaseOrderFormValues, profileId?: string) {
+  if (!values.items || values.items.length === 0) throw new Error('Impossible de créer une commande fournisseur sans lignes d’articles')
   const total = calculateOrderTotal(values.items)
   const reference = await generatePurchaseOrderReference()
 
@@ -423,4 +435,41 @@ export async function getPurchaseGroupNeeds(groupId: string) {
     .in('status', ['regroupe', 'valide'])
   if (error) throw error
   return (data ?? []) as PurchaseNeedGlobal[]
+}
+
+export async function createPurchaseOrderFromGroup(groupId: string, profileId?: string) {
+  const needs = await getPurchaseGroupNeeds(groupId)
+  if (needs.length === 0) throw new Error('Aucun besoin regroupé dans ce groupe')
+  const existingLinks = await supabase.schema('stock')
+    .from('purchase_order_needs')
+    .select('purchase_order_id')
+    .in('need_id', needs.map((need) => need.id))
+  if (existingLinks.error) throw existingLinks.error
+  const existingOrderId = existingLinks.data?.[0]?.purchase_order_id
+  if (existingOrderId) return existingOrderId as string
+
+  const supplierId = needs[0].supplier_id
+  if (!supplierId) throw new Error('Fournisseur manquant pour ce groupe')
+  return createPurchaseOrder({
+    supplier_id: supplierId,
+    order_date: new Date().toISOString().slice(0, 10),
+    delivery_date: needs[0].requested_date ?? new Date().toISOString().slice(0, 10),
+    supplier_reference: '',
+    payment_terms: '',
+    delivery_mode: '',
+    comment: 'Commande créée depuis les besoins regroupés',
+    group_id: groupId,
+    need_ids: needs.map((need) => need.id),
+    items: needs.map((need) => ({
+      article_id: need.article_id,
+      quantity_ordered: Number(need.quantity) > 0 ? Number(need.quantity) : Number(need.quantity_needed ?? 0),
+      unit_id: need.unit_id,
+      stock_unit_id: need.unit_id,
+      conversion_factor: 1,
+      quantity_ordered_stock: Number(need.quantity) > 0 ? Number(need.quantity) : Number(need.quantity_needed ?? 0),
+      unit_price: Number(need.estimated_price) > 0 ? Number(need.estimated_price) : (Number(need.estimated_payable_amount ?? need.estimated_cost ?? 0) / Math.max(1, Number(need.quantity) || Number(need.quantity_needed) || 1)),
+      unit_price_stock: Number(need.estimated_price) > 0 ? Number(need.estimated_price) : (Number(need.estimated_payable_amount ?? need.estimated_cost ?? 0) / Math.max(1, Number(need.quantity) || Number(need.quantity_needed) || 1)),
+      comment: need.comment ?? '',
+    })),
+  }, profileId)
 }

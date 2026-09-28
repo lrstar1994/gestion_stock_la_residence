@@ -33,7 +33,7 @@ export async function listReceptions(filters: ReceptionFilters = {}) {
 
   let query = supabase.schema('stock')
     .from('receptions')
-    .select('*, suppliers(*), locations(id, name), purchase_orders(id, reference, status), receiver:profiles!receptions_created_by_fkey(id, full_name, role), reception_items(id)', { count: 'exact' })
+    .select('*, suppliers(*), locations(id, name), purchase_orders(id, reference, status), receiver:profiles!receptions_created_by_fkey(id, full_name, role), reception_items(id), reception_documents(id)', { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(from, to)
 
@@ -52,7 +52,7 @@ export async function listReceptions(filters: ReceptionFilters = {}) {
 export async function getReception(id: string) {
   const { data, error } = await supabase.schema('stock')
     .from('receptions')
-    .select('*, suppliers(*), locations(id, name), purchase_orders(id, reference, status, total_amount), cash_purchases(id, reference, status, amount_requested, amount_validated, amount_given, total_purchased, change_expected, change_returned, difference), receiver:profiles!receptions_created_by_fkey(id, full_name, role), validator:profiles!receptions_validated_by_fkey(id, full_name), reception_items(*, articles(id, name, families(id, name)), units:units!reception_items_unit_id_fkey(id, name, abbreviation), reception_anomalies(*)), reception_documents(*), reception_history(*, actor:profiles!reception_history_created_by_fkey(id, full_name))')
+    .select('*, suppliers(*), locations(id, name), purchase_orders(id, reference, status, total_amount), cash_purchases(id, reference, status, amount_requested, amount_validated, amount_given, total_purchased, change_expected, change_returned, difference, cash_purchase_receipts(id, file_url, cancelled_at)), receiver:profiles!receptions_created_by_fkey(id, full_name, role), validator:profiles!receptions_validated_by_fkey(id, full_name), reception_items(*, articles(id, name, families(id, name)), units:units!reception_items_unit_id_fkey(id, name, abbreviation), reception_anomalies(*)), reception_documents(*), reception_history(*, actor:profiles!reception_history_created_by_fkey(id, full_name))')
     .eq('id', id)
     .single()
 
@@ -103,6 +103,23 @@ export async function listReceivableCashPurchases() {
 export async function createReception(values: ReceptionFormValues, profileId?: string) {
   validateReceptionValues(values)
   await assertOrderQuantitiesAvailable(values)
+  if (values.handover_id) {
+    const { data: existing, error: existingError } = await supabase.schema('stock')
+      .from('receptions')
+      .select('id, supplier_id, location_id, reception_items(article_id, quantity_delivered, quantity_accepted, unit_price_real)')
+      .eq('handover_id', values.handover_id)
+      .not('status', 'in', '(refusee)')
+      .maybeSingle()
+    if (existingError) throw existingError
+    if (existing) {
+      const existingItems = (existing.reception_items ?? []).map((item: { article_id: string; quantity_delivered: number; quantity_accepted: number; unit_price_real: number }) => [item.article_id, Number(item.quantity_delivered), Number(item.quantity_accepted), Number(item.unit_price_real)])
+      const requestedItems = values.items.map((item) => [item.article_id, Number(item.quantity_delivered), Number(item.quantity_accepted), Number(item.unit_price_real)])
+      if (existing.supplier_id !== values.supplier_id || existing.location_id !== values.location_id || JSON.stringify(existingItems) !== JSON.stringify(requestedItems)) {
+        throw new Error('Cette passation existe déjà avec des données différentes')
+      }
+      return existing.id as string
+    }
+  }
   const total = calculateReceptionTotal(values.items)
   const reference = await generateReceptionReference()
   const { data, error } = await supabase.schema('stock')
@@ -117,6 +134,7 @@ export async function createReception(values: ReceptionFormValues, profileId?: s
       comment: cleanNullable(values.comment),
       purchase_order_id: values.purchase_order_id || null,
       cash_purchase_id: values.cash_purchase_id || null,
+      handover_id: values.handover_id || null,
       is_historical: values.is_historical,
       total_amount: total,
       status: 'brouillon',
@@ -128,7 +146,7 @@ export async function createReception(values: ReceptionFormValues, profileId?: s
   if (error) throw error
 
   await replaceReceptionItems(data.id, values.items)
-  await addReceptionHistory(data.id, 'creation', 'Reception creee', profileId)
+  await addReceptionHistory(data.id, 'creation', 'Reception marchandises creee', profileId)
   if (values.cash_purchase_id) {
     await updateCashPurchaseWorkflowStatus(values.cash_purchase_id, { reception_status: 'en_attente_reception' }, profileId)
   }
@@ -152,6 +170,7 @@ export async function updateReception(id: string, values: ReceptionFormValues, p
       comment: cleanNullable(values.comment),
       purchase_order_id: values.purchase_order_id || null,
       cash_purchase_id: values.cash_purchase_id || null,
+      handover_id: values.handover_id || null,
       is_historical: values.is_historical,
       total_amount: total,
       updated_by: profileId,
@@ -159,7 +178,7 @@ export async function updateReception(id: string, values: ReceptionFormValues, p
     .eq('id', id)
   if (error) throw error
   await replaceReceptionItems(id, values.items)
-  await addReceptionHistory(id, 'modification', 'Reception mise a jour', profileId)
+  await addReceptionHistory(id, 'modification', 'Reception marchandises mise a jour', profileId)
 }
 
 function validateReceptionValues(values: ReceptionFormValues) {
@@ -188,6 +207,9 @@ function validateReceptionValues(values: ReceptionFormValues) {
     }
     if (item.quality === 'non_conforme' && !item.quality_comment?.trim()) {
       throw new Error('Commentaire obligatoire pour un produit non conforme')
+    }
+    if (Number(item.quantity_accepted_display ?? item.quantity_accepted ?? 0) < Number(item.quantity_delivered_display ?? item.quantity_delivered ?? 0) && !item.quality_comment?.trim()) {
+      throw new Error('Motif obligatoire pour un refus partiel ou total')
     }
     if (item.quantity_accepted > item.quantity_delivered) {
       throw new Error('La quantité acceptée ne peut pas dépasser la quantité livrée')
@@ -266,6 +288,9 @@ async function replaceReceptionItems(receptionId: string, items: ReceptionFormVa
         quantity_ordered: item.quantity_ordered,
         quantity_delivered: item.quantity_delivered,
         quantity_accepted: item.quantity_accepted,
+        controller_quantity_accepted: item.controller_quantity_accepted ?? null,
+        handover_quantity_received: item.handover_quantity_received ?? null,
+        stock_quantity_accepted: item.stock_quantity_accepted ?? item.quantity_accepted,
         quantity_delivered_display: item.quantity_delivered_display ?? item.quantity_delivered,
         quantity_accepted_display: item.quantity_accepted_display ?? item.quantity_accepted,
         unit_id: item.unit_id,
@@ -322,6 +347,7 @@ async function generateReceptionReference() {
 
 export async function submitReception(id: string, profileId?: string) {
   const reception = await getReception(id)
+  assertReceptionInvoiceReady(reception)
   const hasAnomaly = receptionHasAnomalies((reception.reception_items ?? []).map((item) => ({
     article_id: item.article_id,
     quantity_ordered: Number(item.quantity_ordered ?? 0),
@@ -348,10 +374,10 @@ export async function submitReception(id: string, profileId?: string) {
       reception_status: hasAnomaly ? 'reception_avec_anomalie' : 'reception_conforme',
     }, profileId)
   }
-  await addReceptionHistory(id, status === 'validee' ? 'validation' : 'soumission', status === 'validee' ? 'Reception validee automatiquement' : 'Reception soumise a validation', profileId)
+  await addReceptionHistory(id, status === 'validee' ? 'validation' : 'soumission', status === 'validee' ? 'Reception marchandises validee automatiquement' : 'Reception marchandises soumise a validation', profileId)
   if (status === 'validee') {
     if (reception.is_historical) {
-      await addReceptionHistory(id, 'historique', 'Reception historique validee sans entree en stock', profileId)
+      await addReceptionHistory(id, 'historique', 'Reception marchandises historique validee sans entree en stock', profileId)
       return
     }
     await applyReceptionSideEffects(id, profileId)
@@ -362,6 +388,7 @@ export async function submitReception(id: string, profileId?: string) {
 
 export async function validateReception(id: string, profileId?: string, comment?: string) {
   const reception = await getReception(id)
+  assertReceptionInvoiceReady(reception)
   const hasAnomaly = (reception.reception_items ?? []).some((item) => item.has_anomaly || item.quality !== 'conforme' || (item.reception_anomalies?.length ?? 0) > 0)
   const status: ReceptionStatus = hasAnomaly ? 'validee_avec_anomalies' : 'validee'
   const { error } = await supabase.schema('stock')
@@ -375,12 +402,12 @@ export async function validateReception(id: string, profileId?: string, comment?
     }, profileId)
   }
   if (reception.is_historical) {
-    await addReceptionHistory(id, 'validation', status === 'validee_avec_anomalies' ? 'Reception historique validee avec anomalies sans entree en stock' : 'Reception historique validee sans entree en stock', profileId)
+    await addReceptionHistory(id, 'validation', status === 'validee_avec_anomalies' ? 'Reception marchandises historique validee avec anomalies sans entree en stock' : 'Reception marchandises historique validee sans entree en stock', profileId)
     return
   }
   await applyReceptionSideEffects(id, profileId)
   const integrated = profileId ? await integratePendingReceptionMovements(profileId) : 0
-  await addReceptionHistory(id, 'validation', status === 'validee_avec_anomalies' ? 'Reception validee avec anomalies' : 'Reception validee', profileId)
+  await addReceptionHistory(id, 'validation', status === 'validee_avec_anomalies' ? 'Reception marchandises validee avec anomalies' : 'Reception marchandises validee', profileId)
   await addReceptionHistory(id, 'stock_pending', integrated > 0 ? 'Entree en stock effectuee avec succes' : 'Mouvement stock en attente cree', profileId)
 }
 
@@ -397,22 +424,22 @@ export async function refuseReception(id: string, profileId?: string, reason?: s
       stock_entry_status: 'bloque_stock',
     }, profileId)
   }
-  await addReceptionHistory(id, 'refus', reason ?? 'Reception refusee', profileId)
+  await addReceptionHistory(id, 'refus', reason ?? 'Reception marchandises refusee', profileId)
 }
 
 async function applyReceptionSideEffects(id: string, profileId?: string) {
   const reception = await getReception(id)
   await supabase.schema('stock').from('stock_pending_movements').delete().eq('reception_id', id)
 
-  const movementRows = (reception.reception_items ?? []).filter((item) => Number(item.quantity_accepted ?? 0) > 0).map((item) => ({
+  const movementRows = (reception.reception_items ?? []).filter((item) => Number(item.stock_quantity_accepted ?? item.quantity_accepted ?? 0) > 0).map((item) => ({
     reception_id: id,
     reception_item_id: item.id,
     article_id: item.article_id,
-    quantity: item.quantity_accepted,
+    quantity: item.stock_quantity_accepted ?? item.quantity_accepted,
     unit_id: item.unit_id,
     location_id: reception.location_id,
     effective_material_unit_cost: item.effective_material_unit_cost ?? item.unit_price_real,
-    effective_material_cost_total: item.effective_material_cost_total ?? Number(item.quantity_accepted ?? 0) * Number(item.unit_price_real ?? 0),
+    effective_material_cost_total: item.effective_material_cost_total ?? Number(item.stock_quantity_accepted ?? item.quantity_accepted ?? 0) * Number(item.unit_price_real ?? 0),
     effective_cost_method: item.effective_cost_method ?? 'invoice_ht_vat_recoverable',
     effective_cost_source: item.effective_cost_source ?? 'reception',
     created_by: profileId,
@@ -446,6 +473,16 @@ async function applyReceptionSideEffects(id: string, profileId?: string) {
       }
     }
     await refreshPurchaseOrderStatus(reception.purchase_order_id, profileId)
+  }
+}
+
+function assertReceptionInvoiceReady(reception: Reception) {
+  if (!reception.invoice_number?.trim() || !reception.invoice_date) {
+    throw new Error('Facture manquante / a regulariser')
+  }
+  const cashReceiptReady = (reception.cash_purchases?.cash_purchase_receipts ?? []).some((receipt) => !receipt.cancelled_at && Boolean(receipt.file_url))
+  if ((reception.reception_documents?.length ?? 0) === 0 && !cashReceiptReady) {
+    throw new Error('Facture manquante / a regulariser : ajoutez le scan, la photo ou le PDF avant validation')
   }
 }
 

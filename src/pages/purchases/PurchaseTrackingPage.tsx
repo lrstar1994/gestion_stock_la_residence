@@ -4,7 +4,8 @@ import { listCashPurchases } from '../../api/modules/cashPurchases.api'
 import { listInvoices } from '../../api/modules/invoices.api'
 import { listPurchaseNeedsGlobal } from '../../api/modules/purchaseNeeds.api'
 import { listPurchaseOrders } from '../../api/modules/purchaseOrders.api'
-import { listReceptions } from '../../api/modules/receptions.api'
+import { listPurchaseReportingReceptions } from '../../api/modules/purchaseReporting.api'
+import { useAuth } from '../../hooks/useAuth'
 import { cashPurchaseStatusLabels } from '../../lib/cashPurchases'
 import { invoiceStatusLabels } from '../../lib/invoices'
 import { needStatusLabels } from '../../lib/purchaseNeeds'
@@ -37,11 +38,13 @@ const emptyState: TrackingState = {
 }
 
 export function PurchaseTrackingPage() {
+  const { profile } = useAuth()
   const [data, setData] = useState<TrackingState>(emptyState)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!profile) return
     let ignore = false
 
     async function load() {
@@ -52,7 +55,7 @@ export function PurchaseTrackingPage() {
           listPurchaseNeedsGlobal({ status: 'open', pageSize: 8 }),
           listCashPurchases({ status: 'all', pageSize: 8 }),
           listPurchaseOrders({ status: 'all', pageSize: 8 }),
-          listReceptions({ status: 'all', pageSize: 8 }),
+          listPurchaseReportingReceptions(profile?.role, { openOnly: true, pageSize: 8 }),
           listInvoices({ status: 'all', pageSize: 8 }),
         ])
 
@@ -88,15 +91,15 @@ export function PurchaseTrackingPage() {
               status: purchaseOrderStatusLabels[order.status],
               to: `/purchase-orders/${order.id}`,
             })),
-          receptions: receptions.receptions
+          receptions: receptions
             .filter((reception) => !['entree_stock', 'refusee'].includes(reception.status))
             .map((reception) => ({
               id: reception.id,
               title: reception.reference,
-              subtitle: reception.suppliers?.name ?? 'Fournisseur non renseigne',
+              subtitle: reception.supplier_name ?? 'Fournisseur non renseigne',
               amount: reception.total_amount,
               status: receptionStatusLabels[reception.status],
-              to: `/receptions/${reception.id}`,
+              to: profile?.role === 'caisse' ? '/purchases/tracking' : `/receptions/${reception.id}`,
             })),
           invoices: invoices.invoices
             .filter((invoice) => !['payee', 'cloturee', 'annulee'].includes(invoice.status))
@@ -120,7 +123,7 @@ export function PurchaseTrackingPage() {
     return () => {
       ignore = true
     }
-  }, [])
+  }, [profile])
 
   const totalOpen = useMemo(
     () => Object.values(data).reduce((sum, rows) => sum + rows.length, 0),
@@ -134,7 +137,7 @@ export function PurchaseTrackingPage() {
           <p className="eyebrow">Achats</p>
           <h1 className="page-title mt-2">Suivi achats</h1>
           <p className="mt-2 max-w-3xl text-sm text-slate-600">
-            Une vue simple pour retrouver les besoins, achats especes, commandes, receptions et factures encore ouverts.
+            Une vue simple pour retrouver les besoins, achats especes, commandes, receptions marchandises et factures encore ouverts.
           </p>
         </div>
         <Link to="/purchases/new" className="btn-primary">Nouvel achat</Link>
@@ -156,7 +159,7 @@ export function PurchaseTrackingPage() {
           <TrackingCard title="Besoins a traiter" rows={data.needs} empty="Aucun besoin ouvert." allTo="/purchase-needs" />
           <TrackingCard title="Achats especes" rows={data.cash} empty="Aucun achat especes ouvert." allTo="/cash-purchases" />
           <TrackingCard title="Commandes fournisseurs" rows={data.orders} empty="Aucune commande ouverte." allTo="/purchase-orders" />
-          <TrackingCard title="Receptions" rows={data.receptions} empty="Aucune reception ouverte." allTo="/receptions" />
+          <TrackingCard title="Reception marchandises" rows={data.receptions} empty="Aucune reception marchandises ouverte." allTo={profile?.role === 'caisse' ? '/purchases/tracking' : '/receptions'} />
           <TrackingCard title="Factures fournisseurs" rows={data.invoices} empty="Aucune facture ouverte." allTo="/invoices" />
         </div>
       )}

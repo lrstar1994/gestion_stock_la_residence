@@ -82,7 +82,7 @@ export function CashPurchasesList() {
             <Link key={purchase.id} to={`/cash-purchases/${purchase.id}`} className="grid gap-3 px-5 py-4 transition hover:bg-slate-50 xl:grid-cols-[140px_110px_1fr_130px_130px_130px_130px_130px_130px_130px] xl:items-center">
               <span className="font-bold text-[#1E3A8A]">{purchase.reference}</span>
               <span className="text-sm">{new Date(purchase.request_date).toLocaleDateString('fr-FR')}</span>
-              <span><span className="block font-semibold">{purchase.buyer?.full_name}</span><span className="text-xs text-slate-500">{purchase.reason}</span></span>
+              <span><span className="block font-semibold">{purchase.buyer_directory?.full_name ?? purchase.buyer?.full_name ?? 'Acheteur non affecté'}</span><span className="text-xs text-slate-500">{purchase.reason}</span></span>
               <span>{Number(purchase.amount_requested).toLocaleString('fr-FR')} Ar</span>
               <span>{Number(purchase.amount_given).toLocaleString('fr-FR')} Ar</span>
               <span>{Number(purchase.total_purchased).toLocaleString('fr-FR')} Ar</span>

@@ -29,7 +29,7 @@ export function ReceptionDetail() {
     try {
       setReception(await getReception(id))
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Reception introuvable')
+      toast.error(error instanceof Error ? error.message : 'Reception marchandises introuvable')
       navigate('/receptions')
     }
   }, [id, navigate])
@@ -44,6 +44,9 @@ export function ReceptionDetail() {
   const canSubmit = canValidate && ['brouillon'].includes(reception.status)
   const canDirectionValidate = reception.status === 'en_attente' && (hasAnomalies ? canValidateAnomalies : canValidate)
   const canModify = canEdit && ['brouillon', 'en_attente'].includes(reception.status)
+  const hasInvoiceDocument = (reception.reception_documents?.length ?? 0) > 0
+  const invoiceReady = Boolean(reception.invoice_number?.trim() && reception.invoice_date && hasInvoiceDocument)
+  const relay = getReceptionRelay(reception.status, invoiceReady, hasAnomalies)
   const receptionItems = reception.reception_items ?? []
   const firstItem = receptionItems[0]
   const fiscalSummary = {
@@ -59,14 +62,14 @@ export function ReceptionDetail() {
 
   const submit = async () => {
     await submitReception(reception.id, profile?.id)
-    toast.success(reception.is_historical ? 'Reception historique validee sans entree en stock' : hasAnomalies ? 'Réception validée avec succès' : 'Entrée en stock effectuée avec succès')
+    toast.success(reception.is_historical ? 'Reception marchandises historique validee sans entree en stock' : hasAnomalies ? 'Reception marchandises validee avec succes' : 'Entree en stock effectuee avec succes')
     await load()
   }
 
   const validate = async () => {
     const comment = window.prompt('Commentaire de validation optionnel') ?? ''
     await validateReception(reception.id, profile?.id, comment)
-    toast.success('Réception validée avec succès')
+    toast.success('RÃ©ception validÃ©e avec succÃ¨s')
     await load()
   }
 
@@ -74,7 +77,7 @@ export function ReceptionDetail() {
     const reason = window.prompt('Motif du refus')
     if (!reason) return
     await refuseReception(reception.id, profile?.id, reason)
-    toast.success('Reception refusee')
+    toast.success('Reception marchandises refusee')
     await load()
   }
 
@@ -110,7 +113,7 @@ export function ReceptionDetail() {
     <div className="space-y-6">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="eyebrow">Reception</p>
+          <p className="eyebrow">Reception marchandises</p>
           <h1 className="page-title mt-2">{reception.reference}</h1>
           <p className="mt-2 text-sm text-slate-600">{reception.suppliers?.name} - {receptionStatusLabels[reception.status]}</p>
         </div>
@@ -121,17 +124,55 @@ export function ReceptionDetail() {
         </div>
       </header>
 
-      <section className="grid gap-4 md:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-5">
+        <Info label="Numero interne de classement" value={reception.reference} />
         <Info label="Fournisseur" value={reception.suppliers?.name || '-'} />
-        <Info label="Date reception" value={new Date(reception.reception_date).toLocaleDateString('fr-FR')} />
-        <Info label="Facture" value={reception.invoice_number} />
+        <Info label="Date reception marchandises" value={new Date(reception.reception_date).toLocaleDateString('fr-FR')} />
+        <Info label="Numero facture fournisseur" value={reception.invoice_number || 'Facture manquante / a regulariser'} />
         <Info label="Montant" value={`${Number(reception.total_amount ?? 0).toLocaleString('fr-FR')} Ar`} />
+      </section>
+
+      <section className="surface p-5">
+        <p className="eyebrow">Relais du dossier</p>
+        <div className="mt-4 grid gap-3 md:grid-cols-5">
+          <RelayInfo label="ÉTAPE ACTUELLE" value={relay.stage} />
+          <RelayInfo label="Responsable actuel" value={relay.owner} />
+          <RelayInfo label="Action attendue" value={relay.action} />
+          <RelayInfo label="Prochain responsable" value={relay.nextOwner} />
+          <RelayInfo label="Prochain statut" value={relay.nextStatus} />
+        </div>
+        {relay.alert && <p className="mt-4 text-sm font-bold text-amber-800">{relay.alert}</p>}
+      </section>
+
+      <section className={`surface border p-5 ${invoiceReady ? 'border-emerald-200' : 'border-amber-300 bg-amber-50'}`}>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="eyebrow">Controle facture / recu / justificatif</p>
+            <h2 className="mt-1 text-lg font-bold text-slate-950">{invoiceReady ? 'Facture jointe - controle possible' : 'Facture manquante / a regulariser'}</h2>
+            <p className="mt-2 text-sm text-slate-700">
+              Numero interne de classement : <strong>{reception.reference}</strong>. Ecrivez ce numero sur la facture papier, puis scannez ou photographiez la facture avec le numero visible avant validation finale et avant passage au Magasin / Stock.
+            </p>
+          </div>
+          <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${invoiceReady ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-200 text-amber-900'}`}>{invoiceReady ? 'Piece presente' : 'Dossier non classable'}</span>
+        </div>
+        {canEdit && <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+          <input type="file" accept="image/*,.pdf" onChange={(event) => setDocumentFile(event.target.files?.[0] ?? null)} className="input" />
+          <input value={documentDescription} onChange={(event) => setDocumentDescription(event.target.value)} className="input" placeholder="Facture, recu ou justificatif" />
+          <button type="button" onClick={addDocument} disabled={uploadingDocument} className="btn-secondary"><FileUp className="mr-2 h-4 w-4" /> {uploadingDocument ? 'Envoi...' : 'Joindre la piece'}</button>
+        </div>}
+        <div className="mt-4 space-y-2">
+          {reception.reception_documents?.map((document) => (
+            <a key={document.id} href={document.file_url} target="_blank" className="block rounded-md border border-slate-200 bg-white p-3 text-sm font-semibold text-[#1E3A8A]">
+              {document.file_name}<span className="ml-2 text-xs font-normal text-slate-500">{document.description || ''}</span>
+            </a>
+          ))}
+        </div>
       </section>
 
       <section className="surface grid gap-4 p-5 md:grid-cols-2">
         <InfoFlat label="Localisation" value={reception.locations?.name || '-'} />
-        <InfoFlat label="Mode" value={reception.is_historical ? 'Historique sans entree en stock' : 'Reception normale'} />
-        <InfoFlat label="Receptionnaire" value={reception.receiver?.full_name || '-'} />
+        <InfoFlat label="Mode" value={reception.is_historical ? 'Historique sans entree en stock' : 'Reception marchandises normale'} />
+        <InfoFlat label="Receptionnaire marchandises" value={reception.receiver?.full_name || '-'} />
         {reception.purchase_orders ? <InfoLink label="Commande associee" value={reception.purchase_orders.reference} to={`/purchase-orders/${reception.purchase_order_id}`} /> : <InfoFlat label="Commande associee" value="-" />}
         {reception.cash_purchases ? <InfoLink label="Achat espece associe" value={reception.cash_purchases.reference} to={`/cash-purchases/${reception.cash_purchase_id}`} /> : <InfoFlat label="Achat espece associe" value="-" />}
         <InfoFlat label="Validation" value={reception.validated_at ? `${new Date(reception.validated_at).toLocaleString('fr-FR')} - ${reception.validator?.full_name || ''}` : '-'} />
@@ -173,7 +214,7 @@ export function ReceptionDetail() {
       {(reception.purchase_orders || reception.cash_purchases) && (
         <section className="surface">
           <div className="border-b border-slate-200 px-5 py-4">
-            <p className="eyebrow">Source de la reception</p>
+            <p className="eyebrow">Source marchandises</p>
             <h2 className="mt-1 text-lg font-bold text-slate-950">
               {reception.purchase_orders ? `Commande ${reception.purchase_orders.reference}` : `Achat espece ${reception.cash_purchases?.reference}`}
             </h2>
@@ -200,7 +241,7 @@ export function ReceptionDetail() {
 
       <section className="surface overflow-hidden">
         <div className="border-b border-slate-200 px-5 py-4">
-          <p className="eyebrow">Controle reception</p>
+          <p className="eyebrow">Controle</p>
           <h2 className="mt-1 text-lg font-bold text-slate-950">Prevu vs reel</h2>
         </div>
         <div className="overflow-x-auto">
@@ -288,31 +329,14 @@ export function ReceptionDetail() {
       </section>
 
       <section className="surface flex flex-wrap gap-3 p-5">
-        {canSubmit && <button type="button" onClick={submit} className="btn-primary"><Send className="mr-2 h-4 w-4" /> Soumettre / valider</button>}
-        {canDirectionValidate && <button type="button" onClick={validate} className="btn-primary"><CheckCircle className="mr-2 h-4 w-4" /> Valider</button>}
+        {canSubmit && <button type="button" onClick={submit} disabled={!invoiceReady} className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"><Send className="mr-2 h-4 w-4" /> Soumettre / valider</button>}
+        {canDirectionValidate && <button type="button" onClick={validate} disabled={!invoiceReady} className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"><CheckCircle className="mr-2 h-4 w-4" /> Valider</button>}
         {canDirectionValidate && <button type="button" onClick={refuse} className="btn-secondary text-red-700"><XCircle className="mr-2 h-4 w-4" /> Refuser</button>}
-        {reception.is_historical && ['validee', 'validee_avec_anomalies'].includes(reception.status) && <p className="text-sm font-semibold text-amber-800">Reception historique validee : aucune entree en stock n'a ete generee.</p>}
+        {!invoiceReady && <p className="w-full text-sm font-bold text-amber-800">Facture manquante / a regulariser : dossier non classable et entree definitive en stock bloquee.</p>}
+        {reception.is_historical && ['validee', 'validee_avec_anomalies'].includes(reception.status) && <p className="text-sm font-semibold text-amber-800">Reception marchandises historique validee : aucune entree en stock n'a ete generee.</p>}
         {!reception.is_historical && reception.status === 'validee' && <p className="text-sm font-semibold text-blue-800">Mouvement d'entree en stock cree en attente du module Stock.</p>}
         {!reception.is_historical && reception.status === 'validee_avec_anomalies' && <p className="text-sm font-semibold text-orange-800">Mouvement d'entree en stock cree avec anomalies en attente du module Stock.</p>}
         {!reception.is_historical && reception.status === 'entree_stock' && <p className="text-sm font-semibold text-emerald-800">Entree en stock effectuee avec succes.</p>}
-      </section>
-
-      <section className="surface p-5">
-        <h2 className="text-lg font-bold">Documents</h2>
-        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-          <input type="file" accept="image/*,.pdf" onChange={(event) => setDocumentFile(event.target.files?.[0] ?? null)} className="input" />
-          <input value={documentDescription} onChange={(event) => setDocumentDescription(event.target.value)} className="input" placeholder="Description optionnelle" />
-          <button type="button" onClick={addDocument} disabled={uploadingDocument} className="btn-secondary"><FileUp className="mr-2 h-4 w-4" /> {uploadingDocument ? 'Envoi...' : 'Ajouter'}</button>
-        </div>
-        <div className="mt-4 space-y-2">
-          {reception.reception_documents?.map((document) => (
-            <a key={document.id} href={document.file_url} target="_blank" className="block rounded-md border border-slate-200 p-3 text-sm font-semibold text-[#1E3A8A]">
-              {document.file_name}
-              <span className="ml-2 text-xs font-normal text-slate-500">{document.description || ''}</span>
-            </a>
-          ))}
-          {(reception.reception_documents?.length ?? 0) === 0 && <p className="text-sm text-slate-600">Aucun document ajoute.</p>}
-        </div>
       </section>
 
       <section className="surface p-5">
@@ -360,4 +384,16 @@ function InfoFlat({ label, value }: { label: string; value: string }) {
 
 function InfoLink({ label, value, to }: { label: string; value: string; to: string }) {
   return <div><p className="text-sm text-slate-500">{label}</p><Link to={to} className="mt-1 inline-block font-semibold text-[#1E3A8A] hover:underline">{value}</Link></div>
+}
+
+function RelayInfo({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-md border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-bold uppercase text-slate-500">{label}</p><p className="mt-1 text-sm font-bold text-slate-900">{value}</p></div>
+}
+
+function getReceptionRelay(status: Reception['status'], invoiceReady: boolean, hasAnomalies: boolean) {
+  if (status === 'brouillon') return { stage: 'Controle documentaire', owner: 'Controle (Direction / Magasin)', action: invoiceReady ? 'Soumettre la reception marchandises' : 'Joindre la facture ou le justificatif', nextOwner: 'Magasin / Stock', nextStatus: 'En attente Magasin / Stock : marchandises a accepter', alert: invoiceReady ? '' : 'Facture manquante / a regulariser : dossier non classable.' }
+  if (status === 'en_attente') return { stage: 'Acceptation des marchandises', owner: 'Magasin / Stock', action: 'Accepter ou refuser les marchandises avec explication', nextOwner: hasAnomalies ? 'Direction' : 'Controle final', nextStatus: hasAnomalies ? 'En attente Direction : ecart a arbitrer' : 'Reception marchandises validee', alert: invoiceReady ? '' : 'Facture manquante / a regulariser : validation finale bloquee.' }
+  if (status === 'validee_avec_anomalies' || status === 'refusee') return { stage: 'Arbitrage', owner: 'Direction', action: 'Arbitrer les ecarts ou le refus explique', nextOwner: 'Magasin / Stock', nextStatus: 'Decision Direction a appliquer', alert: 'Dossier non classe a traiter.' }
+  if (status === 'validee') return { stage: 'Passage au stock', owner: 'Magasin / Stock', action: 'Finaliser l entree definitive en stock', nextOwner: 'Controle final', nextStatus: 'Dossier a classer', alert: '' }
+  return { stage: 'Classement', owner: 'Controle final', action: 'Verifier la piece et classer le dossier', nextOwner: '-', nextStatus: 'Dossier classe', alert: '' }
 }

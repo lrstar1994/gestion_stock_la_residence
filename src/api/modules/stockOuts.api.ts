@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase'
+import { isArticleAllowedAtLocation } from './catalog.api'
 import { getEvent } from './events.api'
 import { getStockQuantity } from './stock.api'
 import { computeConsumptionType } from '../../lib/stockOuts'
@@ -84,11 +85,13 @@ export async function createStockOutRows(values: StockOutFormValues, profileId: 
   if (!values.destination) throw new Error('La destination est obligatoire pour cette sortie')
   if (!values.reason.trim()) throw new Error('Le motif doit etre renseigne')
 
+  const itemLocationChecks = await Promise.all(values.items.map((item) => isArticleAllowedAtLocation(item.article_id, item.location_id)))
+  if (itemLocationChecks.some((allowed) => !allowed)) {
+    throw new Error("Cette localisation n'est pas autorisee pour un ou plusieurs articles")
+  }
+
   const createdIds: string[] = []
   for (const item of values.items) {
-    const allowed = await isArticleAllowedInLocation(item.article_id, item.location_id)
-    if (!allowed) throw new Error("Cette localisation n'est pas autorisee pour cet article")
-
     const needsValidation = role !== 'direction' && (values.out_date < new Date().toISOString().slice(0, 10) || item.is_loss || values.destination === 'perte' || values.destination === 'casse')
     const available = await getStockQuantity(item.article_id, item.location_id)
     if (!needsValidation && available < item.quantity) throw new Error('Stock insuffisant pour cette sortie')
@@ -145,7 +148,7 @@ async function applyStockOutMovement(id: string, profileId: string) {
   if (error) throw error
   if (stockOut.stock_movement_id) return
 
-  const allowed = await isArticleAllowedInLocation(stockOut.article_id, stockOut.location_id)
+  const allowed = await isArticleAllowedAtLocation(stockOut.article_id, stockOut.location_id)
   if (!allowed) throw new Error("Cette localisation n'est pas autorisee pour cet article")
 
   const available = await getStockQuantity(stockOut.article_id, stockOut.location_id)
@@ -278,12 +281,3 @@ export async function getConsumptionAnalysis(filters: Pick<StockOutFilters, 'fro
   return Array.from(rows.values())
 }
 
-async function isArticleAllowedInLocation(articleId: string, locationId: string) {
-  const { count, error } = await supabase.schema('stock')
-    .from('article_locations')
-    .select('id', { count: 'exact', head: true })
-    .eq('article_id', articleId)
-    .eq('location_id', locationId)
-  if (error) throw error
-  return (count ?? 0) > 0
-}

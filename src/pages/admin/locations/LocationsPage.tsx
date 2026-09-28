@@ -3,7 +3,9 @@ import { Edit2, Plus, Search, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { createLocation, deleteLocation, listLocations, updateLocation } from '../../../api/modules/catalog.api'
+import { createLocation, deleteLocation, listLocations, setReferentialActive, updateLocation } from '../../../api/modules/catalog.api'
+import { getMyPinStatus } from '../../../api/modules/sensitiveActions.api'
+import { SensitiveActionModal } from '../../../components/SensitiveActionModal'
 import { useAuth } from '../../../hooks/useAuth'
 import { locationSchema } from '../../../lib/catalog'
 import type { Location, LocationFormValues } from '../../../lib/catalog'
@@ -14,6 +16,9 @@ export function LocationsPage() {
   const [search, setSearch] = useState('')
   const [editingLocation, setEditingLocation] = useState<Location | null>(null)
   const [loading, setLoading] = useState(true)
+  const [pinDefined, setPinDefined] = useState(false)
+  const [locationToDelete, setLocationToDelete] = useState<Location | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const form = useForm<LocationFormValues>({
     resolver: zodResolver(locationSchema),
     defaultValues: { name: '', description: '', is_magasin_general: false },
@@ -22,7 +27,7 @@ export function LocationsPage() {
   const loadLocations = useCallback(async () => {
     setLoading(true)
     try {
-      setLocations(await listLocations(search))
+      setLocations(await listLocations(search, true))
     } catch {
       toast.error('Une erreur est survenue. Veuillez reessayer.')
     } finally {
@@ -33,6 +38,10 @@ export function LocationsPage() {
   useEffect(() => {
     loadLocations()
   }, [loadLocations])
+
+  useEffect(() => {
+    getMyPinStatus().then((status) => setPinDefined(status.pin_defined)).catch(() => setPinDefined(false))
+  }, [])
 
   const startEdit = (location: Location) => {
     setEditingLocation(location)
@@ -64,19 +73,7 @@ export function LocationsPage() {
     }
   }
 
-  const handleDelete = async (location: Location) => {
-    if (!window.confirm('Voulez-vous vraiment supprimer cette localisation ?')) {
-      return
-    }
-
-    try {
-      await deleteLocation(location.id)
-      toast.success('Localisation supprimee avec succes')
-      await loadLocations()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Une erreur est survenue. Veuillez reessayer.')
-    }
-  }
+  const handleDelete = (location: Location) => setLocationToDelete(location)
 
   return (
     <div className="space-y-6">
@@ -165,6 +162,38 @@ export function LocationsPage() {
           )}
         </div>
       </section>
+      <SensitiveActionModal
+        open={Boolean(locationToDelete)}
+        title={locationToDelete?.is_active === false ? 'Réactiver la localisation' : (locationToDelete?.articles_count ?? 0) > 0 ? 'Désactiver la localisation utilisée' : 'Supprimer une localisation inutilisée'}
+        description={(locationToDelete?.articles_count ?? 0) > 0 ? 'La localisation reste visible dans le stock et les historiques existants.' : 'Toute localisation liée à un mouvement ou un inventaire est protégée.'}
+        permissionLabel={locationToDelete?.is_active === false ? 'referentials.reactivate' : (locationToDelete?.articles_count ?? 0) > 0 ? 'referentials.deactivate' : 'referentials.delete_unused'}
+        pinDefined={pinDefined}
+        requireReason
+        busy={deleting}
+        onCancel={() => setLocationToDelete(null)}
+        onConfirm={async ({ pin, reason }) => {
+          if (!locationToDelete) return
+          setDeleting(true)
+          try {
+            if (locationToDelete.is_active === false) {
+              await setReferentialActive('location', locationToDelete.id, true, pin, reason)
+              toast.success('Localisation réactivée et auditée.')
+            } else if ((locationToDelete.articles_count ?? 0) > 0) {
+              await setReferentialActive('location', locationToDelete.id, false, pin, reason)
+              toast.success('Localisation désactivée et auditée.')
+            } else {
+              await deleteLocation(locationToDelete.id, pin, reason)
+              toast.success('Localisation supprimée et auditée.')
+            }
+            setLocationToDelete(null)
+            await loadLocations()
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Suppression impossible')
+          } finally {
+            setDeleting(false)
+          }
+        }}
+      />
     </div>
   )
 }

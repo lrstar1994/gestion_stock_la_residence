@@ -2,7 +2,9 @@ import { Download, FileSpreadsheet } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Link } from 'react-router-dom'
+import { getMyPinStatus } from '../../api/modules/sensitiveActions.api'
 import { listMovements, validateMovement } from '../../api/modules/stock.api'
+import { SensitiveActionModal } from '../../components/SensitiveActionModal'
 import { useAuth } from '../../hooks/useAuth'
 import { exportMovementsToCsv, exportMovementsToExcel } from '../../lib/stockExports'
 import { canValidateStock, movementStatusLabels, movementTypeLabels, movementTypes } from '../../lib/stock'
@@ -17,6 +19,9 @@ export function StockMovementsPage() {
   const [movementType, setMovementType] = useState<MovementType | 'all'>('all')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
+  const [pinDefined, setPinDefined] = useState(false)
+  const [movementToValidate, setMovementToValidate] = useState<StockMovement | null>(null)
+  const [validating, setValidating] = useState(false)
   const pageSize = 20
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
   const filters = useMemo(() => ({ date, movementType, page, pageSize }), [date, movementType, page])
@@ -32,11 +37,11 @@ export function StockMovementsPage() {
     load().catch(() => toast.error('Impossible de charger le journal.'))
   }, [load])
 
-  const validate = async (id: string) => {
-    await validateMovement(id, profile?.id)
-    toast.success('Mouvement enregistré avec succès')
-    await load()
-  }
+  useEffect(() => {
+    if (canValidate) {
+      getMyPinStatus().then((status) => setPinDefined(status.pin_defined)).catch(() => setPinDefined(false))
+    }
+  }, [canValidate])
 
   return (
     <div className="space-y-6">
@@ -68,7 +73,7 @@ export function StockMovementsPage() {
               <span>{movement.units?.abbreviation}</span>
               <span className="text-sm">{movement.from_location?.name || '-'} → {movement.to_location?.name || '-'}</span>
               <span>{Number(movement.total_cost ?? 0).toLocaleString('fr-FR')} Ar</span>
-              <span className="space-y-2"><Badge status={movement.status} />{canValidate && movement.status === 'en_attente' && <button type="button" onClick={() => validate(movement.id)} className="btn-secondary">Valider</button>}</span>
+              <span className="space-y-2"><Badge status={movement.status} />{canValidate && movement.status === 'en_attente' && <button type="button" onClick={() => setMovementToValidate(movement)} className="btn-secondary">Valider</button>}</span>
             </div>
           ))}
           {movements.length === 0 && <p className="p-5 text-sm text-slate-600">Aucun mouvement.</p>}
@@ -82,6 +87,30 @@ export function StockMovementsPage() {
           <button type="button" className="btn-secondary" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>Suivant</button>
         </div>
       </div>
+      <SensitiveActionModal
+        open={Boolean(movementToValidate)}
+        title="Valider le mouvement"
+        description={`Le mouvement ${movementToValidate?.movement_reference ?? ''} modifiera le stock réel.`}
+        permissionLabel={movementToValidate?.movement_type === 'transfert' ? 'stock.transfers.validate_sensitive' : 'stock.manual.validate'}
+        pinDefined={pinDefined}
+        requireReason
+        busy={validating}
+        onCancel={() => setMovementToValidate(null)}
+        onConfirm={async ({ pin, reason }) => {
+          if (!movementToValidate) return
+          setValidating(true)
+          try {
+            await validateMovement(movementToValidate.id, pin, reason)
+            toast.success('Mouvement validé et audité.')
+            setMovementToValidate(null)
+            await load()
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Validation impossible')
+          } finally {
+            setValidating(false)
+          }
+        }}
+      />
     </div>
   )
 }

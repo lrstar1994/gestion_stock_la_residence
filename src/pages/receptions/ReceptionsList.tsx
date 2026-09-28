@@ -1,4 +1,4 @@
-import { Download, FileSpreadsheet, Plus } from 'lucide-react'
+﻿import { Download, FileSpreadsheet, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Link } from 'react-router-dom'
@@ -50,17 +50,17 @@ export function ReceptionsList() {
     const result = await listReceptions({ ...filters, page: 1, pageSize: 10000 })
     if (format === 'csv') exportReceptionsToCsv(result.receptions)
     else exportReceptionsToExcel(result.receptions)
-    toast.success('Receptions exportees avec succes')
+    toast.success('Receptions marchandises exportees avec succes')
   }
 
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div><p className="eyebrow">Stock</p><h1 className="page-title mt-2">Receptions</h1></div>
+        <div><p className="eyebrow">Stock</p><h1 className="page-title mt-2">Reception marchandises</h1></div>
         <div className="flex flex-wrap gap-2">
           {canExport && <button type="button" onClick={() => exportAll('csv')} className="btn-secondary"><Download className="mr-2 h-4 w-4" /> CSV</button>}
           {canExport && <button type="button" onClick={() => exportAll('excel')} className="btn-secondary"><FileSpreadsheet className="mr-2 h-4 w-4" /> Excel</button>}
-          {canCreate && <Link to="/receptions/new" className="btn-primary"><Plus className="mr-2 h-4 w-4" /> Nouvelle reception</Link>}
+          {canCreate && <Link to="/receptions/new" className="btn-primary"><Plus className="mr-2 h-4 w-4" /> Nouvelle reception marchandises</Link>}
         </div>
       </header>
 
@@ -72,7 +72,7 @@ export function ReceptionsList() {
       </section>
 
       <section className="surface grid gap-3 p-4 md:grid-cols-[1fr_190px_240px]">
-        <input value={search} onChange={(event) => { setPage(1); setSearch(event.target.value) }} className="input" placeholder="Recherche numero de reception" />
+        <input value={search} onChange={(event) => { setPage(1); setSearch(event.target.value) }} className="input" placeholder="Recherche numero de reception marchandises" />
         <select value={status} onChange={(event) => { setPage(1); setStatus(event.target.value as ReceptionStatus | 'all') }} className="input"><option value="all">Tous statuts</option>{receptionStatuses.map((item) => <option key={item} value={item}>{receptionStatusLabels[item]}</option>)}</select>
         <select value={supplierId} onChange={(event) => { setPage(1); setSupplierId(event.target.value) }} className="input"><option value="">Tous fournisseurs</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select>
       </section>
@@ -93,7 +93,7 @@ export function ReceptionsList() {
               <Badge status={reception.status} />
             </Link>
           ))}
-          {receptions.length === 0 && <p className="p-5 text-sm text-slate-600">Aucune reception.</p>}
+          {receptions.length === 0 && <p className="p-5 text-sm text-slate-600">Aucune reception marchandises.</p>}
         </div>
       </section>
 

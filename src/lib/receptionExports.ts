@@ -1,4 +1,4 @@
-import jsPDF from 'jspdf'
+﻿import jsPDF from 'jspdf'
 import * as XLSX from 'xlsx'
 import { receptionStatusLabels } from './receptions'
 import type { Reception } from './receptions'
@@ -29,13 +29,13 @@ function rows(receptions: Reception[]) {
     Articles: reception.reception_items?.length ?? 0,
     Montant: Number(reception.total_amount ?? 0),
     Statut: receptionStatusLabels[reception.status],
-    Receptionnaire: reception.receiver?.full_name || '',
+    'Receptionnaire marchandises': reception.receiver?.full_name || '',
   }))
 }
 
 export function exportReceptionsToCsv(receptions: Reception[]) {
   const data = rows(receptions)
-  const headers = Object.keys(data[0] ?? { Reference: '', Fournisseur: '', Date: '', Facture: '', Commande: '', Articles: '', Montant: '', Statut: '', Receptionnaire: '' })
+  const headers = Object.keys(data[0] ?? { Reference: '', Fournisseur: '', Date: '', Facture: '', Commande: '', Articles: '', Montant: '', Statut: '', 'Receptionnaire marchandises': '' })
   const csv = [headers.map(csvEscape).join(';'), ...data.map((row) => headers.map((header) => csvEscape(row[header as keyof typeof row])).join(';'))].join('\n')
   downloadBlob(`\uFEFF${csv}`, `receptions-${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8')
 }
@@ -44,7 +44,7 @@ export function exportReceptionsToExcel(receptions: Reception[]) {
   const workbook = XLSX.utils.book_new()
   const worksheet = XLSX.utils.json_to_sheet(rows(receptions))
   worksheet['!cols'] = [{ wch: 18 }, { wch: 26 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 10 }, { wch: 14 }, { wch: 24 }, { wch: 24 }]
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Receptions')
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Receptions marchandises')
   XLSX.writeFile(workbook, `receptions-${new Date().toISOString().slice(0, 10)}.xlsx`)
 }
 
@@ -60,7 +60,7 @@ export function exportReceptionToPdf(reception: Reception) {
   y += 7
   doc.text(`Fournisseur : ${reception.suppliers?.name || '-'}`, margin, y)
   y += 7
-  doc.text(`Date reception : ${new Date(reception.reception_date).toLocaleDateString('fr-FR')}`, margin, y)
+  doc.text(`Date reception marchandises : ${new Date(reception.reception_date).toLocaleDateString('fr-FR')}`, margin, y)
   y += 7
   doc.text(`Facture : ${reception.invoice_number}`, margin, y)
   y += 7

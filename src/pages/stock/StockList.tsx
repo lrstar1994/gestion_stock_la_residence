@@ -1,4 +1,4 @@
-import { Download, ListChecks, RefreshCw, Repeat, Search } from 'lucide-react'
+﻿import { Download, ListChecks, RefreshCw, Repeat, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Link } from 'react-router-dom'
@@ -19,7 +19,7 @@ export function StockList() {
   const [search, setSearch] = useState('')
   const [familyId, setFamilyId] = useState('')
   const [locationId, setLocationId] = useState('')
-  const [status, setStatus] = useState<'all' | 'low' | 'minimum' | 'normal' | 'out'>('all')
+  const [status, setStatus] = useState<'all' | 'low' | 'minimum' | 'normal' | 'out' | 'to_initialize' | 'initial_unconfirmed' | 'missing_cost' | 'with_value'>('all')
   const [unconfirmedInitial, setUnconfirmedInitial] = useState(0)
   const canManage = canManageStock(profile?.role)
   const filters = useMemo(() => ({ search, familyId, locationId, status }), [familyId, locationId, search, status])
@@ -52,10 +52,12 @@ export function StockList() {
 
   const dashboard = {
     total: rows.length,
+    available: rows.filter((row) => Number(row.total_quantity ?? 0) > 0).length,
+    toInitialize: rows.filter((row) => row.initialization_status === 'to_initialize').length,
     low: rows.filter((row) => stockStatus(row) === 'bas').length,
-    minimum: rows.filter((row) => stockStatus(row) === 'minimum').length,
     out: rows.filter((row) => stockStatus(row) === 'rupture').length,
-    value: rows.reduce((sum, row) => sum + Number(row.stock_value ?? (Number(row.total_quantity ?? 0) * Number(row.average_price ?? 0))), 0),
+    value: rows.reduce((sum, row) => sum + Number(row.stock_value ?? 0), 0),
+    missingCosts: rows.filter((row) => row.valuation_status === 'missing_cost').length,
   }
   const alerts = rows.filter((row) => ['minimum', 'bas', 'rupture'].includes(stockStatus(row)))
 
@@ -66,23 +68,25 @@ export function StockList() {
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => exportStockToExcel(rows)} className="btn-secondary"><Download className="mr-2 h-4 w-4" /> Excel</button>
           <Link to="/stock/movements" className="btn-secondary"><ListChecks className="mr-2 h-4 w-4" /> Journal</Link>
-          {canManage && <button type="button" onClick={integrate} className="btn-secondary"><RefreshCw className="mr-2 h-4 w-4" /> Integrer receptions</button>}
+          {canManage && <button type="button" onClick={integrate} className="btn-secondary"><RefreshCw className="mr-2 h-4 w-4" /> Integrer receptions marchandises</button>}
           {canManage && <Link to="/stock/movements/manual/new" className="btn-secondary">Mouvement manuel</Link>}
-          {canManage && <Link to="/stock/transfer" className="btn-primary"><Repeat className="mr-2 h-4 w-4" /> Transfert</Link>}
+          {['direction', 'magasinier'].includes(profile?.role ?? '') && <Link to="/stock/transfer" className="btn-primary"><Repeat className="mr-2 h-4 w-4" /> Transfert</Link>}
         </div>
       </header>
 
-      <section className="grid gap-4 md:grid-cols-4">
-        <Metric label="Articles suivis" value={String(dashboard.total)} />
-        <Metric label="Minimum atteint" value={String(dashboard.minimum)} />
+      <section className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+        <Metric label="Articles stockables actifs" value={String(dashboard.total)} />
+        <Metric label="Articles/localisations Ã  initialiser" value={String(dashboard.toInitialize)} />
+        <Metric label="Articles avec stock disponible" value={String(dashboard.available)} />
         <Metric label="Stock bas" value={String(dashboard.low)} />
         <Metric label="Ruptures" value={String(dashboard.out)} />
-        <Metric label="Valeur estimee" value={`${dashboard.value.toLocaleString('fr-FR')} Ar`} />
+        <Metric label="Valeur estimÃ©e connue" value={`${dashboard.value.toLocaleString('fr-FR')} Ar`} />
       </section>
+      {dashboard.missingCosts > 0 && <p className="text-sm font-semibold text-amber-700">Valorisation partielle : {dashboard.missingCosts} article(s) sans coÃ»t moyen fiable.</p>}
 
       {unconfirmedInitial > 0 && (
         <section className="surface border-amber-200 bg-amber-50 p-5 text-sm font-semibold text-amber-800">
-          Stock initial non confirme. Inventaire initial a realiser dans un delai maximum de 2 jours. {unconfirmedInitial} article(s)/localisation(s) concerne(s).
+          Stock initial non confirmÃ©. {unconfirmedInitial} article(s)/localisation(s) concernÃ©(s). <Link to="/inventories/initial" className="underline">Ouvrir lâ€™inventaire initial</Link>.
         </section>
       )}
 
@@ -109,23 +113,24 @@ export function StockList() {
         <label className="relative block"><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} className="input pl-9" placeholder="Rechercher article" /></label>
         <select value={familyId} onChange={(event) => setFamilyId(event.target.value)} className="input"><option value="">Toutes familles</option>{families.map((family) => <option key={family.id} value={family.id}>{family.name}</option>)}</select>
         <select value={locationId} onChange={(event) => setLocationId(event.target.value)} className="input"><option value="">Toutes localisations</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select>
-        <select value={status} onChange={(event) => setStatus(event.target.value as typeof status)} className="input"><option value="all">Tous statuts</option><option value="normal">Stock normal</option><option value="minimum">Stock minimum atteint</option><option value="low">Stock bas</option><option value="out">Rupture</option></select>
+        <select value={status} onChange={(event) => setStatus(event.target.value as typeof status)} className="input"><option value="all">Tous statuts, y compris Ã  initialiser</option><option value="normal">Stock disponible</option><option value="minimum">Stock minimum atteint</option><option value="low">Stock bas</option><option value="out">Rupture</option><option value="to_initialize">Ã€ initialiser</option><option value="initial_unconfirmed">Stock initial non confirmÃ©</option><option value="missing_cost">CoÃ»t manquant</option><option value="with_value">Avec valeur</option></select>
       </section>
 
       <section className="surface overflow-hidden">
-        <div className="hidden grid-cols-[1fr_130px_1.2fr_100px_120px_120px_130px_110px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
-          <span>Article</span><span>Quantite totale</span><span>Localisations</span><span>Seuil</span><span>Dernier cout connu</span><span>Cout moyen stock</span><span>Valeur stock</span><span>Statut</span>
+        <div className="hidden grid-cols-[1fr_120px_1.2fr_90px_110px_110px_120px_120px_115px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
+          <span>Article</span><span>QuantitÃ© totale</span><span>Localisations</span><span>Seuil</span><span>Dernier coÃ»t</span><span>CoÃ»t moyen</span><span>Valeur stock</span><span>Dernier mouvement</span><span>Statut</span>
         </div>
         <div className="divide-y divide-slate-200">
           {rows.map((row) => (
-            <div key={row.article_id} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_130px_1.2fr_100px_120px_120px_130px_110px] xl:items-center">
+            <div key={row.article_id} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_120px_1.2fr_90px_110px_110px_120px_120px_115px] xl:items-center">
               <Link to={`/stock/articles/${row.article_id}`} className="font-bold text-[#1E3A8A]">{row.articles?.name}<span className="block text-xs font-normal text-slate-500">{row.articles?.families?.name}</span></Link>
               <span>{Number(row.total_quantity ?? 0).toLocaleString('fr-FR')} {row.articles?.units?.abbreviation}</span>
-              <span className="text-sm text-slate-600">{row.locations?.map((location) => `${location.location_name}: ${Number(location.quantity).toLocaleString('fr-FR')} (${Number(location.stock_value ?? 0).toLocaleString('fr-FR')} Ar)`).join(' | ') || '-'}</span>
+              <span className="text-sm text-slate-600">{row.locations?.filter((location) => Number(location.quantity) > 0).map((location) => `${location.location_name}: ${Number(location.quantity).toLocaleString('fr-FR')} (${Number(location.stock_value ?? 0).toLocaleString('fr-FR')} Ar)`).join(' | ') || '-'}</span>
               <span>{Number(row.articles?.min_stock ?? 0).toLocaleString('fr-FR')}</span>
-              <span>{Number(row.last_price ?? 0).toLocaleString('fr-FR')} Ar</span>
-              <span>{Number(row.average_price ?? 0).toLocaleString('fr-FR')} Ar</span>
-              <span>{Number(row.stock_value ?? (Number(row.total_quantity ?? 0) * Number(row.average_price ?? 0))).toLocaleString('fr-FR')} Ar</span>
+              <span>{row.last_price == null ? 'Ã€ complÃ©ter' : `${Number(row.last_price).toLocaleString('fr-FR')} Ar`}</span>
+              <span>{row.average_price == null ? 'Ã€ complÃ©ter' : `${Number(row.average_price).toLocaleString('fr-FR')} Ar`}</span>
+              <span>{row.stock_value == null ? 'Partielle' : `${Number(row.stock_value).toLocaleString('fr-FR')} Ar`}</span>
+              <span>{row.last_movement_date ? new Date(row.last_movement_date).toLocaleDateString('fr-FR') : 'Aucun'}</span>
               <Badge status={stockStatus(row)} />
             </div>
           ))}
@@ -141,7 +146,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function Badge({ status }: { status: string }) {
-  const color = status === 'rupture' ? 'bg-red-50 text-red-800' : status === 'bas' ? 'bg-orange-50 text-orange-800' : status === 'minimum' ? 'bg-yellow-50 text-yellow-800' : 'bg-emerald-50 text-emerald-800'
-  const label = status === 'rupture' ? 'Rupture' : status === 'bas' ? 'Stock bas' : status === 'minimum' ? 'Stock minimum atteint' : 'Normal'
+  const color = status === 'rupture' ? 'bg-red-50 text-red-800' : status === 'bas' ? 'bg-orange-50 text-orange-800' : ['minimum', 'a_initialiser', 'initial_non_confirme'].includes(status) ? 'bg-yellow-50 text-yellow-800' : 'bg-emerald-50 text-emerald-800'
+  const label = status === 'rupture' ? 'Rupture' : status === 'bas' ? 'Stock bas' : status === 'minimum' ? 'Stock minimum atteint' : status === 'a_initialiser' ? 'Ã€ initialiser' : status === 'initial_non_confirme' ? 'Initial non confirmÃ©' : 'Disponible'
   return <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${color}`}>{label}</span>
 }

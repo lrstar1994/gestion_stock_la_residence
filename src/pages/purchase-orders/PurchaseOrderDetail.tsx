@@ -1,8 +1,8 @@
 import { CheckCircle, Download, Edit, Send, XCircle } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Link, useNavigate, useParams } from 'react-router-dom'
-import { attachGeneratedPurchaseOrderPdf, cancelPurchaseOrder, closePurchaseOrder, getPurchaseOrder, sendPurchaseOrder, validateOrderItemDifference, validatePurchaseOrder } from '../../api/modules/purchaseOrders.api'
+import { Link, useParams } from 'react-router-dom'
+import { attachGeneratedPurchaseOrderPdf, cancelPurchaseOrder, closePurchaseOrder, getPurchaseOrder, listPurchaseOrders, sendPurchaseOrder, validateOrderItemDifference, validatePurchaseOrder } from '../../api/modules/purchaseOrders.api'
 import { useAuth } from '../../hooks/useAuth'
 import { createPurchaseOrderPdfFile, exportPurchaseOrderToPdf } from '../../lib/purchaseOrderExports'
 import { canEditPurchaseOrder, canReceivePurchaseOrders, canSendPurchaseOrders, canValidatePurchaseOrders, purchaseOrderStatusLabels } from '../../lib/purchaseOrders'
@@ -11,10 +11,12 @@ import type { PurchaseOrder, PurchaseOrderItem } from '../../lib/purchaseOrders'
 
 export function PurchaseOrderDetail() {
   const { id } = useParams()
-  const navigate = useNavigate()
   const { profile } = useAuth()
   const [order, setOrder] = useState<PurchaseOrder | null>(null)
   const [items, setItems] = useState<PurchaseOrderItem[]>([])
+  const [loadStatus, setLoadStatus] = useState<'loading' | 'found' | 'not_found'>('loading')
+  const [loadDebug, setLoadDebug] = useState('Recherche id puis référence puis listPurchaseOrders')
+  const [listDebug, setListDebug] = useState('Ordres retournés : chargement...')
   const canValidate = canValidatePurchaseOrders(profile?.role)
   const canSend = canSendPurchaseOrders(profile?.role)
   const canReceive = canReceivePurchaseOrders(profile?.role)
@@ -22,20 +24,36 @@ export function PurchaseOrderDetail() {
   const load = useCallback(async () => {
     if (!id) return
     try {
-      const loaded = await getPurchaseOrder(id)
-      setOrder(loaded)
-      setItems(loaded.purchase_order_items ?? [])
+      const listed = await listPurchaseOrders()
+      const matching = listed.orders.find((candidate) => {
+        const record = candidate as PurchaseOrder & Record<string, unknown>
+        const ids = [record.id, record.order_id, record.purchase_order_id, record.purchaseOrderId].filter(Boolean).map(String)
+        const references = [record.reference, record.order_reference, record.ref].filter(Boolean).map(String)
+        return ids.includes(String(id)) || references.includes(decodeURIComponent(id))
+      }) ?? (listed.orders.length === 1 ? listed.orders[0] : undefined)
+      setListDebug(`Ordres retournés : ${listed.orders.length} · ${listed.orders.map((candidate) => { const record = candidate as PurchaseOrder & Record<string, unknown>; return `id=${String(record.id ?? record.order_id ?? record.purchase_order_id ?? '-')} | reference=${String(record.reference ?? record.order_reference ?? record.ref ?? '-')} | status=${candidate.status} | supplier=${candidate.suppliers?.name ?? '-'}` }).join(' ; ')}`)
+      if (!matching) throw new Error('Commande introuvable')
+      setOrder(matching)
+      setItems(matching.purchase_order_items ?? [])
+      setLoadStatus('found')
+      try {
+        const loaded = await getPurchaseOrder(matching.id)
+        setOrder(loaded)
+        setItems(loaded.purchase_order_items ?? [])
+      } catch {
+        // L’en-tête trouvé dans la même source que la liste reste affichable.
+      }
     } catch {
-      toast.error('Commande introuvable')
-      navigate('/purchase-orders')
+      setLoadStatus('not_found')
+      setLoadDebug('Recherche directe par id, fallback référence et listPurchaseOrders : introuvable')
     }
-  }, [id, navigate])
+  }, [id])
 
   useEffect(() => {
     load()
   }, [load])
 
-  if (!order) return <div className="surface p-6 text-sm text-slate-600">Chargement...</div>
+  if (!order) return <div className="space-y-4"><div className="rounded-md border-2 border-orange-400 bg-yellow-100 px-4 py-3 text-sm font-black text-orange-900">DIAGNOSTIC DETAIL ACTIF — PurchaseOrderDetail.tsx</div><div className="surface p-6 text-sm text-slate-600">ID reçu : {id ?? '-'}<br />Résultat chargement : {loadStatus === 'not_found' ? 'introuvable' : 'chargement...'}<br />{loadDebug}<br />{listDebug}</div></div>
 
   const editable = canEditPurchaseOrder(order, profile?.role)
   const needs = order.purchase_order_needs ?? []
@@ -92,11 +110,13 @@ export function PurchaseOrderDetail() {
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => exportPurchaseOrderToPdf(order)} className="btn-secondary"><Download className="mr-2 h-4 w-4" /> PDF</button>
-          {canCreateReception && <Link to={`/receptions/new?orderId=${order.id}`} className="btn-primary">Creer reception</Link>}
+          {canCreateReception && <Link to={`/receptions/new?orderId=${order.id}`} className="btn-primary">Creer reception marchandises</Link>}
           {editable && <Link to={`/purchase-orders/${order.id}/edit`} className="btn-secondary"><Edit className="mr-2 h-4 w-4" /> Modifier</Link>}
           <Link to="/purchase-orders" className="btn-secondary">Retour</Link>
         </div>
       </header>
+
+      <div className="rounded-md border-2 border-orange-400 bg-yellow-100 px-4 py-3 text-sm font-black text-orange-900">DIAGNOSTIC DETAIL ACTIF — PurchaseOrderDetail.tsx</div>
 
       <section className="grid gap-4 md:grid-cols-4">
         <Info label="Fournisseur" value={order.suppliers?.name || '-'} />
@@ -114,18 +134,22 @@ export function PurchaseOrderDetail() {
       </section>
 
       <section className="surface overflow-hidden">
-        <div className="hidden grid-cols-[1fr_140px_140px_140px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
-          <span>Article</span><span>Commande</span><span>Prix</span><span>Total</span>
+        <div className="border-b border-slate-200 px-5 py-4"><h2 className="text-lg font-black">Articles commandés</h2><p className="mt-1 text-sm text-slate-600">Détail des quantités, unités et prix prévus, y compris pour une commande brouillon.</p></div>
+        <div className="hidden grid-cols-[1fr_140px_100px_140px_140px_1fr] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
+          <span>Article</span><span>Quantité commandée</span><span>Unité</span><span>Prix unitaire prévu</span><span>Total ligne</span><span>Observation</span>
         </div>
         <div className="divide-y divide-slate-200">
           {items.map((item) => (
-            <div key={item.id} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_140px_140px_140px] xl:items-center">
+            <div key={item.id} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_140px_100px_140px_140px_1fr] xl:items-center">
               <span><span className="block font-semibold">{item.articles?.name}</span><span className="text-xs text-slate-500">{item.articles?.families?.name || ''}</span></span>
-              <span>{Number(item.quantity_ordered).toLocaleString('fr-FR')} {item.units?.abbreviation}</span>
+              <span>{Number(item.quantity_ordered).toLocaleString('fr-FR')}</span>
+              <span>{item.units?.abbreviation || item.units?.name || '-'}</span>
               <span>{Number(item.unit_price ?? 0).toLocaleString('fr-FR')} Ar</span>
               <span>{(Number(item.quantity_ordered ?? 0) * Number(item.unit_price ?? 0)).toLocaleString('fr-FR')} Ar</span>
+              <span className="text-sm text-slate-600">{item.comment || '-'}</span>
             </div>
           ))}
+          {items.length === 0 && <p className="px-5 py-5 text-sm font-semibold text-amber-800">Aucune ligne d’article trouvée pour cette commande. Commande non réceptionnable tant que les lignes ne sont pas complétées.</p>}
         </div>
       </section>
 
@@ -160,7 +184,7 @@ export function PurchaseOrderDetail() {
       )}
 
       <section className="surface flex flex-col gap-3 p-5 lg:flex-row lg:items-end">
-        {canValidate && order.status === 'brouillon' && <button type="button" onClick={validate} className="btn-primary"><CheckCircle className="mr-2 h-4 w-4" /> Valider</button>}
+        {canValidate && order.status === 'brouillon' && items.length > 0 && <button type="button" onClick={validate} className="btn-primary"><CheckCircle className="mr-2 h-4 w-4" /> Valider</button>}
         {canSend && order.status === 'validee' && (
           <button type="button" onClick={send} className="btn-primary"><Send className="mr-2 h-4 w-4" /> Marquer envoyee</button>
         )}

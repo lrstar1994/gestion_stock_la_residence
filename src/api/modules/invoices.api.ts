@@ -271,7 +271,7 @@ function buildInvoiceItemRow(invoiceId: string, item: InvoiceFormValues['items']
   }
 }
 
-async function generateInvoiceReference(invoiceDate: string) {
+export async function generateInvoiceReference(invoiceDate: string) {
   const date = new Date(invoiceDate)
   const prefix = `INV-${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
   const { count, error } = await supabase.schema('stock').from('invoices').select('id', { count: 'exact', head: true }).ilike('reference', `${prefix}-%`)

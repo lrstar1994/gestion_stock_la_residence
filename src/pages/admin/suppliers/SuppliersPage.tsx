@@ -13,6 +13,18 @@ import type { Supplier, SupplierFormValues } from '../../../lib/suppliers'
 const supplierGridClass =
   'grid min-w-[1500px] grid-cols-[1.2fr_150px_130px_130px_170px_140px_170px_180px_1.2fr_110px] items-center gap-3'
 
+function supplierCompletionReasons(supplier: Supplier) {
+  const reasons: string[] = []
+  const informal = supplier.is_usual_without_nif_stat === true || ['no_nif_stat_declared', 'no_nif_stat_not_declared'].includes(supplier.supplier_tax_status ?? '')
+  if (!supplier.contact?.trim()) reasons.push('contact manquant')
+  if (!supplier.phone?.trim()) reasons.push('téléphone manquant')
+  if (!informal && (!supplier.supplier_tax_status || supplier.supplier_tax_status === 'unknown')) reasons.push('statut fiscal non renseigné')
+  if (supplier.is_identified && (!supplier.nif?.trim() || !supplier.stat?.trim())) reasons.push('fournisseur identifié sans NIF/STAT complet')
+  if (supplier.default_vat_recoverable && !supplier.default_vat_rate) reasons.push('TVA récupérable cochée mais taux TVA absent')
+  if (supplier.is_usual_without_nif_stat && (supplier.nif?.trim() || supplier.stat?.trim())) reasons.push('déclaré sans NIF/STAT mais un identifiant fiscal est renseigné')
+  return reasons
+}
+
 export function SuppliersPage() {
   const { profile } = useAuth()
   const canEdit = canManageSuppliers(profile?.role)
@@ -263,7 +275,7 @@ export function SuppliersPage() {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 className="input pl-9"
-                placeholder="Rechercher nom, NIF ou STAT"
+                placeholder="Rechercher nom, alias, mots-cles, raison sociale, NIF ou STAT"
               />
             </label>
           </div>
@@ -290,6 +302,7 @@ export function SuppliersPage() {
                   <article key={supplier.id} className={`${supplierGridClass} px-4 py-4`}>
                     <div>
                       <p className="font-semibold text-slate-950">{supplier.name}</p>
+                      {(() => { const reasons = supplierCompletionReasons(supplier); const informal = supplier.is_usual_without_nif_stat === true || ['no_nif_stat_declared', 'no_nif_stat_not_declared'].includes(supplier.supplier_tax_status ?? ''); return reasons.length > 0 ? <div className="mt-1 w-fit rounded-md bg-amber-50 px-2 py-1 text-xs font-bold text-amber-800"><p>Fiche fournisseur à compléter</p><p className="mt-1 font-medium">Pourquoi : {reasons.join(' ; ')}</p></div> : informal ? <p className="mt-1 w-fit rounded-md bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700">Fournisseur informel — informations fiscales limitées</p> : null })()}
                       {supplier.notes && <p className="mt-1 line-clamp-2 text-sm text-slate-500">{supplier.notes}</p>}
                     </div>
                     <p className="text-sm text-slate-700">{supplier.contact || '-'}</p>

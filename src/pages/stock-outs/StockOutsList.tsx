@@ -59,8 +59,9 @@ export function StockOutsList() {
       ])
       setRows(stockOutResult.stockOuts)
       setLocations(loadedLocations)
-    } catch {
-      toast.error('Impossible de charger les sorties de stock.')
+    } catch (error) {
+      console.error('Erreur de chargement des sorties de stock', error)
+      toast.error('Impossible de charger les sorties de stock.', { id: 'stock-outs-load-error' })
     } finally {
       setLoading(false)
     }

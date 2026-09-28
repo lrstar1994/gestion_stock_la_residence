@@ -14,12 +14,12 @@ export type PaymentMode = (typeof paymentModes)[number]
 export type InvoicePaymentStatus = (typeof invoicePaymentStatuses)[number]
 
 export const invoiceStatusLabels: Record<InvoiceStatus, string> = {
-  a_verifier: 'A verifier',
+  a_verifier: 'En attente Controle : facture fournisseur a verifier',
   validee: 'Validee',
   a_payer: 'A payer',
   payee: 'Payee',
   partiellement_paye: 'Partiellement payee',
-  conteste: 'Contestee',
+  conteste: 'En attente Direction : facture contestee a arbitrer',
   cloturee: 'Cloturee',
   annulee: 'Annulee',
 }

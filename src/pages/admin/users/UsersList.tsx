@@ -3,13 +3,16 @@ import toast from 'react-hot-toast'
 import { listUsers, rejectUser, updateUser, validateUser } from '../../../api/modules/users.api'
 import { UserRejectionModal } from '../../../components/admin/UserRejectionModal'
 import { UserValidationModal } from '../../../components/admin/UserValidationModal'
+import { UserPinResetModal } from '../../../components/admin/UserPinResetModal'
 import { useAuth } from '../../../hooks/useAuth'
 import { roleLabels, statusLabels, userRoles, userStatuses } from '../../../lib/validation'
 import type { Profile, UserRole, UserStatus } from '../../../lib/validation'
 import { UserDetail } from './UserDetail'
 import { UserForm } from './UserForm'
+import { Link } from 'react-router-dom'
 
 type ModalState =
+  | { type: 'reset-pin'; user: Profile }
   | { type: 'validate'; user: Profile }
   | { type: 'reject'; user: Profile }
   | { type: 'edit'; user: Profile }
@@ -79,7 +82,7 @@ export function UsersList() {
     }
   }
 
-  const handleUpdate = async (values: { role: UserRole; status: 'active' | 'inactive' }) => {
+  const handleUpdate = async (values: { role: UserRole; status: 'active' | 'inactive'; locationIds: string[] }) => {
     if (modal?.type !== 'edit') {
       return
     }
@@ -104,9 +107,12 @@ export function UsersList() {
             Validez les demandes, attribuez les roles et controlez les acces.
           </p>
         </div>
-        <div className="surface px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total</p>
-          <p className="mt-1 text-2xl font-bold text-[#1E3A8A]">{users.length}</p>
+        <div className="flex items-center gap-3">
+          <div className="surface px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total</p>
+            <p className="mt-1 text-2xl font-bold text-[#1E3A8A]">{users.length}</p>
+          </div>
+          <Link to="/admin/users/new" className="btn-primary whitespace-nowrap">+ Ajouter un utilisateur</Link>
         </div>
       </header>
 
@@ -176,6 +182,9 @@ export function UsersList() {
                   </span>
 
                   <div className="flex flex-wrap items-center gap-2">
+                    {profile?.role === 'direction' && profile.status === 'active' && user.id !== profile.id && (
+                      <button type="button" onClick={() => setModal({ type: 'reset-pin', user })} className="btn-secondary px-3 py-2">Réinitialiser le PIN</button>
+                    )}
                     <span className="rounded-md bg-blue-50 px-2.5 py-1 text-xs font-bold text-[#1E3A8A]">
                       {roleLabels[user.role]}
                     </span>
@@ -210,6 +219,7 @@ export function UsersList() {
       {modal?.type === 'validate' && <UserValidationModal user={modal.user} onClose={() => setModal(null)} onValidate={handleValidate} />}
       {modal?.type === 'reject' && <UserRejectionModal user={modal.user} onClose={() => setModal(null)} onReject={handleReject} />}
       {modal?.type === 'edit' && <UserForm user={modal.user} onClose={() => setModal(null)} onSave={handleUpdate} />}
+      {modal?.type === 'reset-pin' && <UserPinResetModal user={modal.user} onClose={() => setModal(null)} />}
     </div>
   )
 }

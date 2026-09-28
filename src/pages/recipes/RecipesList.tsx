@@ -6,7 +6,7 @@ import { listRecipes } from '../../api/modules/recipes.api'
 import { useAuth } from '../../hooks/useAuth'
 import { getErrorMessage } from '../../lib/errors'
 import { exportRecipesToCsv, exportRecipesToExcel } from '../../lib/recipeExports'
-import { canEditRecipes, mainIngredientLabels, recipeMainIngredients, recipeStatusLabels, recipeStatuses, recipeTypeLabels, recipeTypes } from '../../lib/recipes'
+import { canEditRecipes, getRecipeCostStatusLabel, getRecipeWorkflowLabel, mainIngredientLabels, recipeMainIngredients, recipeStatusLabels, recipeStatuses, recipeTypeLabels, recipeTypes } from '../../lib/recipes'
 import type { Recipe, RecipeMainIngredient, RecipeStatus, RecipeType } from '../../lib/recipes'
 
 export function RecipesList() {
@@ -91,20 +91,23 @@ export function RecipesList() {
       </section>
 
       <section className="surface overflow-hidden">
-        <div className="hidden grid-cols-[140px_1fr_130px_150px_130px_130px_120px_100px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
-          <span>Code</span><span>Nom</span><span>Type</span><span>Matiere</span><span>Cout</span><span>Prix vente</span><span>Statut</span><span>Version</span>
+        <div className="hidden grid-cols-[100px_1fr_90px_130px_120px_120px_120px_110px_70px_80px_80px] gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
+          <span>Code</span><span>Nom</span><span>Type</span><span>Base / rendement</span><span>Coût actuel</span><span>PV théorique TTC</span><span>PV retenu TTC</span><span>Statut</span><span>Version</span><span>Chef</span><span>Direction</span>
         </div>
         <div className="divide-y divide-slate-200">
           {recipes.map((recipe) => (
-            <Link key={recipe.id} to={`/recipes/${recipe.id}`} className="grid gap-3 px-5 py-4 transition hover:bg-slate-50 xl:grid-cols-[140px_1fr_130px_150px_130px_130px_120px_100px] xl:items-center">
+            <Link key={recipe.id} to={`/recipes/${recipe.id}`} className="grid gap-3 px-5 py-4 transition hover:bg-slate-50 xl:grid-cols-[100px_1fr_90px_130px_120px_120px_120px_110px_70px_80px_80px] xl:items-center">
               <span className="font-semibold text-[#1E3A8A]">{recipe.code || '-'}</span>
               <span className="font-semibold text-slate-950">{recipe.name}</span>
               <span className="text-sm">{recipe.type}</span>
-              <span className="text-sm">{mainIngredientLabels[recipe.main_ingredient]}</span>
+              <span className="text-sm">{recipe.yield_mode === 'rendement_produit' ? `${Number(recipe.yield_quantity ?? 0).toLocaleString('fr-FR')} unité rendement` : `${recipe.portions} portions`}</span>
               <span className="text-sm">{Number(recipe.total_cost).toLocaleString('fr-FR')} Ar</span>
-              <span className="text-sm">{Number(recipe.final_price).toLocaleString('fr-FR')} Ar</span>
-              <span className="w-fit rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[#1E3A8A]">{recipeStatusLabels[recipe.status]}</span>
+              <span className="text-sm">{recipe.yield_mode === 'rendement_produit' ? 'Non défini' : `${Number(recipe.theoretical_sale_price_ttc ?? 0).toLocaleString('fr-FR')} Ar`}</span>
+              <span className="text-sm">{recipe.retained_sale_price_ttc == null ? '—' : `${Number(recipe.retained_sale_price_ttc).toLocaleString('fr-FR')} Ar`}</span>
+              <span><span className="block w-fit rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[#1E3A8A]">{getRecipeWorkflowLabel(recipe)}</span><span className="mt-1 block text-xs text-slate-500">{recipeStatusLabels[recipe.status]} · Coût {getRecipeCostStatusLabel(recipe.cost_status)}</span></span>
               <span className="text-sm">v{recipe.version}</span>
+              <span className="text-xs">{recipe.chef_validated_at ? 'Validée' : '—'}</span>
+              <span className="text-xs">{recipe.direction_validated_at ? 'Validée' : '—'}</span>
             </Link>
           ))}
           {recipes.length === 0 && <p className="p-5 text-sm text-slate-600">Aucune fiche trouvee.</p>}

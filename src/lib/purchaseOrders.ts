@@ -1,4 +1,4 @@
-import { z } from 'zod'
+﻿import { z } from 'zod'
 import type { Article, Unit } from './catalog'
 import type { PurchaseGroup, PurchaseNeedGlobal } from './purchaseNeeds'
 import type { Supplier } from './suppliers'
@@ -16,7 +16,7 @@ export const purchaseOrderStatusLabels: Record<PurchaseOrderStatus, string> = {
   envoyee: 'Envoyee',
   partiellement_livree: 'Partiellement livree',
   livree: 'Livree',
-  reception_avec_ecart: 'Reception avec ecart',
+  reception_avec_ecart: 'Reception marchandises avec ecart',
   annulee: 'Annulee',
   cloturee: 'Cloturee',
 }

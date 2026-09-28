@@ -1,7 +1,7 @@
 import { Download, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { listLocations } from '../../api/modules/catalog.api'
 import { getInventoryDashboard, listInventories } from '../../api/modules/inventories.api'
 import { useAuth } from '../../hooks/useAuth'
@@ -12,33 +12,51 @@ import type { Location } from '../../lib/catalog'
 
 export function InventoriesList() {
   const { profile } = useAuth()
+  const routeLocation = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [inventories, setInventories] = useState<Inventory[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [dashboard, setDashboard] = useState<InventoryDashboard | null>(null)
   const [search, setSearch] = useState('')
   const [locationId, setLocationId] = useState('')
   const [type, setType] = useState<InventoryType | 'all'>('all')
-  const [status, setStatus] = useState<InventoryStatus | 'all'>('all')
+  const [status, setStatus] = useState<InventoryStatus | 'all'>(searchParams.get('status') === 'brouillon' ? 'brouillon' : 'all')
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
+  const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const pageSize = 10
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
-  const filters = useMemo(() => ({ search, locationId, type, status, page, pageSize }), [locationId, page, search, status, type])
+  const filters = useMemo(() => ({ search, locationId, type, status, fromDate, toDate, page, pageSize }), [fromDate, locationId, page, search, status, toDate, type])
+  const hasActiveFilters = Boolean(search || locationId || type !== 'all' || status !== 'all' || fromDate || toDate)
+
+  const resetFilters = () => {
+    setSearch(''); setLocationId(''); setType('all'); setStatus('all'); setFromDate(''); setToDate(''); setPage(1)
+    setSearchParams({})
+  }
 
   const load = useCallback(async () => {
-    const [result, loadedLocations, loadedDashboard] = await Promise.all([
+    setLoading(true)
+    const [result, loadedLocations, loadedDashboard] = await Promise.allSettled([
       listInventories(filters),
       listLocations(),
       getInventoryDashboard(),
     ])
-    setInventories(result.inventories)
-    setTotal(result.total)
-    setLocations(loadedLocations)
-    setDashboard(loadedDashboard)
+    if (result.status === 'fulfilled') {
+      setInventories(result.value.inventories)
+      setTotal(result.value.total)
+    }
+    if (loadedLocations.status === 'fulfilled') setLocations(loadedLocations.value)
+    if (loadedDashboard.status === 'fulfilled') setDashboard(loadedDashboard.value)
+    setLoading(false)
   }, [filters])
 
   useEffect(() => {
-    load().catch(() => toast.error('Impossible de charger les inventaires.'))
+    load().catch(() => {
+      setLoading(false)
+      toast.error('Impossible de charger les inventaires.')
+    })
   }, [load])
 
   const exportAll = async () => {
@@ -57,6 +75,12 @@ export function InventoriesList() {
           {canCreateInventories(profile?.role) && <Link to="/inventories/new" className="btn-primary"><Plus className="mr-2 h-4 w-4" /> Nouvel inventaire</Link>}
         </div>
       </header>
+
+      {(routeLocation.state as { draftSaved?: boolean } | null)?.draftSaved && (
+        <section className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
+          Brouillon enregistre. Vous pouvez le retrouver dans Inventaires &gt; Statut : Brouillon.
+        </section>
+      )}
 
       <section className="grid gap-4 md:grid-cols-4">
         <Metric label="Inventaires" value={String(dashboard?.total ?? 0)} />
@@ -82,11 +106,14 @@ export function InventoriesList() {
         </section>
       )}
 
-      <section className="surface grid gap-3 p-4 md:grid-cols-4">
-        <input value={search} onChange={(event) => { setPage(1); setSearch(event.target.value) }} className="input" placeholder="Recherche commentaire" />
+      <section className="surface grid gap-3 p-4 md:grid-cols-[repeat(6,minmax(0,1fr))_auto]">
+        <input value={search} onChange={(event) => { setPage(1); setSearch(event.target.value) }} className="input" placeholder="Reference ou commentaire" />
         <select value={locationId} onChange={(event) => { setPage(1); setLocationId(event.target.value) }} className="input"><option value="">Toutes zones</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select>
         <select value={type} onChange={(event) => { setPage(1); setType(event.target.value as InventoryType | 'all') }} className="input"><option value="all">Tous types</option>{inventoryTypes.map((item) => <option key={item} value={item}>{inventoryTypeLabels[item]}</option>)}</select>
         <select value={status} onChange={(event) => { setPage(1); setStatus(event.target.value as InventoryStatus | 'all') }} className="input"><option value="all">Tous statuts</option>{inventoryStatuses.map((item) => <option key={item} value={item}>{inventoryStatusLabels[item]}</option>)}</select>
+        <input type="date" value={fromDate} onChange={(event) => { setPage(1); setFromDate(event.target.value) }} className="input" aria-label="Date debut" />
+        <input type="date" value={toDate} onChange={(event) => { setPage(1); setToDate(event.target.value) }} className="input" aria-label="Date fin" />
+        <button type="button" onClick={resetFilters} disabled={!hasActiveFilters} className="btn-secondary disabled:opacity-50">Reinitialiser les filtres</button>
       </section>
 
       <section className="surface overflow-hidden">
@@ -106,7 +133,8 @@ export function InventoriesList() {
               <Badge status={inventory.status} />
             </Link>
           ))}
-          {inventories.length === 0 && <p className="p-5 text-sm text-slate-600">Aucun inventaire.</p>}
+          {loading && <p className="p-5 text-sm text-slate-600">Chargement des inventaires...</p>}
+          {!loading && inventories.length === 0 && <div className="flex items-center justify-between gap-3 p-5"><p className="text-sm text-slate-600">{hasActiveFilters ? 'Aucun inventaire ne correspond aux filtres actifs.' : 'Aucun inventaire.'}</p>{hasActiveFilters && <button type="button" onClick={resetFilters} className="btn-secondary">Reinitialiser les filtres</button>}</div>}
         </div>
       </section>
 

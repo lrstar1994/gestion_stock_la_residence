@@ -29,6 +29,64 @@ export type Supplier = {
   updated_by: string | null
 }
 
+export const supplierBusinessTypes = ['societe', 'entreprise_individuelle', 'personne_physique', 'informel', 'a_verifier'] as const
+export const supplierUsageTypes = ['habituel', 'occasionnel', 'a_verifier'] as const
+export const supplierProvidedServiceTags = ['epicerie', 'boissons', 'produits_frais', 'legumes', 'fruits', 'emballages', 'entretien', 'maintenance', 'transport', 'administratif', 'petit_materiel', 'generaliste', 'autres'] as const
+
+export type SupplierBusinessType = (typeof supplierBusinessTypes)[number]
+export type SupplierUsageType = (typeof supplierUsageTypes)[number]
+export type SupplierProvidedServiceTag = (typeof supplierProvidedServiceTags)[number]
+
+export const supplierBusinessTypeLabels: Record<SupplierBusinessType, string> = {
+  societe: 'Societe',
+  entreprise_individuelle: 'Entreprise individuelle',
+  personne_physique: 'Personne physique',
+  informel: 'Informel',
+  a_verifier: 'A verifier',
+}
+
+export const supplierUsageTypeLabels: Record<SupplierUsageType, string> = {
+  habituel: 'Fournisseur habituel',
+  occasionnel: 'Fournisseur occasionnel',
+  a_verifier: 'A verifier',
+}
+
+export const supplierProvidedServiceLabels: Record<SupplierProvidedServiceTag, string> = {
+  epicerie: 'Epicerie',
+  boissons: 'Boissons',
+  produits_frais: 'Produits frais',
+  legumes: 'Legumes',
+  fruits: 'Fruits',
+  emballages: 'Emballages',
+  entretien: 'Entretien',
+  maintenance: 'Maintenance',
+  transport: 'Transport',
+  administratif: 'Administratif',
+  petit_materiel: 'Petit materiel',
+  generaliste: 'Generaliste',
+  autres: 'Autres',
+}
+
+export type QuickSupplierFormValues = {
+  name: string
+  legal_name?: string
+  business_type: SupplierBusinessType
+  usage_type: SupplierUsageType
+  nif?: string
+  stat?: string
+  vat_status: 'yes' | 'no' | 'unknown'
+  fiscal_status: 'complete' | 'to_check'
+  contact?: string
+  phone?: string
+  whatsapp?: string
+  email?: string
+  address?: string
+  payment_mode?: string
+  payment_terms?: string
+  aliases?: string
+  provided_services: SupplierProvidedServiceTag[]
+}
+
 export const supplierSchema = z.object({
   name: z.string().min(1, 'Le nom est obligatoire'),
   contact: z.string().optional(),
@@ -51,6 +109,21 @@ export const supplierSchema = z.object({
 })
 
 export type SupplierFormValues = z.infer<typeof supplierSchema>
+
+export function buildQuickSupplierNotes(values: QuickSupplierFormValues) {
+  return [
+    values.legal_name ? `Raison sociale : ${values.legal_name}` : '',
+    `Type : ${supplierBusinessTypeLabels[values.business_type]}`,
+    `Usage : ${supplierUsageTypeLabels[values.usage_type]}`,
+    `Statut fiscal : ${values.fiscal_status === 'complete' ? 'Complet' : 'A verifier'}`,
+    values.whatsapp ? `WhatsApp : ${values.whatsapp}` : '',
+    values.payment_mode ? `Mode paiement : ${values.payment_mode}` : '',
+    values.payment_terms ? `Conditions paiement : ${values.payment_terms}` : '',
+    values.aliases ? `Alias / mots-cles : ${values.aliases}` : '',
+    values.provided_services.length > 0 ? `Produits / services : ${values.provided_services.map((tag) => supplierProvidedServiceLabels[tag]).join(', ')}` : '',
+    values.fiscal_status === 'to_check' ? 'Alerte : Fiche fournisseur a completer' : '',
+  ].filter(Boolean).join('\n')
+}
 
 export function canManageSuppliers(role?: UserRole) {
   return role === 'direction' || role === 'acheteur'

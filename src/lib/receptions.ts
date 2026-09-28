@@ -1,4 +1,4 @@
-import { z } from 'zod'
+﻿import { z } from 'zod'
 import type { Article, Location, Unit } from './catalog'
 import type { PurchaseOrder } from './purchaseOrders'
 import type { Supplier } from './suppliers'
@@ -16,11 +16,11 @@ export type AnomalyType = (typeof anomalyTypes)[number]
 
 export const receptionStatusLabels: Record<ReceptionStatus, string> = {
   brouillon: 'Brouillon',
-  en_attente: 'En attente',
+  en_attente: 'En attente Magasin / Stock : marchandises a accepter',
   validee: 'Validee',
-  validee_avec_anomalies: 'Validee avec anomalies',
+  validee_avec_anomalies: 'En attente Direction : ecart de reception marchandises a arbitrer',
   entree_stock: 'Entree stock',
-  refusee: 'Refusee',
+  refusee: 'En attente Direction : refus de reception marchandises a arbitrer',
 }
 
 export const qualityStatusLabels: Record<QualityStatus, string> = {
@@ -82,6 +82,9 @@ export type ReceptionItem = {
   quantity_ordered: number
   quantity_delivered: number
   quantity_accepted: number
+  controller_quantity_accepted?: number | null
+  handover_quantity_received?: number | null
+  stock_quantity_accepted?: number | null
   quantity_delivered_display?: number | null
   quantity_accepted_display?: number | null
   quantity_refused?: number
@@ -129,6 +132,7 @@ export type Reception = {
   comment: string | null
   purchase_order_id: string | null
   cash_purchase_id: string | null
+  handover_id?: string | null
   is_historical: boolean
   validated_by: string | null
   validated_at: string | null
@@ -142,7 +146,7 @@ export type Reception = {
   suppliers?: Supplier
   locations?: Pick<Location, 'id' | 'name'>
   purchase_orders?: Pick<PurchaseOrder, 'id' | 'reference' | 'status' | 'total_amount' | 'purchase_order_items'>
-  cash_purchases?: Pick<CashPurchase, 'id' | 'reference' | 'status' | 'amount_requested' | 'amount_validated' | 'amount_given' | 'total_purchased' | 'change_expected' | 'change_returned' | 'difference' | 'cash_purchase_items'>
+  cash_purchases?: Pick<CashPurchase, 'id' | 'reference' | 'status' | 'amount_requested' | 'amount_validated' | 'amount_given' | 'total_purchased' | 'change_expected' | 'change_returned' | 'difference' | 'cash_purchase_items' | 'cash_purchase_receipts'>
   receiver?: Pick<Profile, 'id' | 'full_name' | 'role'>
   validator?: Pick<Profile, 'id' | 'full_name'>
   reception_items?: ReceptionItem[]
@@ -155,13 +159,16 @@ export const receptionItemSchema = z.object({
   quantity_ordered: z.number().min(0),
   quantity_delivered: z.number().min(0, 'Quantite livree obligatoire'),
   quantity_accepted: z.number().min(0, 'Quantite acceptee obligatoire'),
+  controller_quantity_accepted: z.number().min(0).nullable().optional(),
+  handover_quantity_received: z.number().min(0).nullable().optional(),
+  stock_quantity_accepted: z.number().min(0).nullable().optional(),
   quantity_delivered_display: z.number().min(0).optional(),
   quantity_accepted_display: z.number().min(0).optional(),
   unit_id: z.string().min(1, "L'unite est obligatoire"),
   unit_display_id: z.string().optional(),
   conversion_factor: z.number().positive().optional(),
   unit_price_planned: z.number().min(0).nullable(),
-  unit_price_real: z.number().positive('Le prix réel doit être supérieur à 0'),
+  unit_price_real: z.number().positive('Le prix rÃ©el doit Ãªtre supÃ©rieur Ã  0'),
   unit_price_display: z.number().min(0).optional(),
   supplier_tax_status: z.string().optional(),
   invoice_tax_mode: z.string().optional(),
@@ -184,12 +191,13 @@ export const receptionItemSchema = z.object({
 export const receptionSchema = z.object({
   supplier_id: z.string().min(1, 'Fournisseur obligatoire'),
   reception_date: z.string().min(1, 'Date de reception obligatoire'),
-  invoice_number: z.string().min(1, 'Veuillez saisir un numéro de facture'),
+  invoice_number: z.string().min(1, 'Veuillez saisir un numÃ©ro de facture'),
   invoice_date: z.string().min(1, 'Date de facture obligatoire'),
   location_id: z.string().min(1, 'Localisation obligatoire'),
   comment: z.string().optional(),
   purchase_order_id: z.string().optional(),
   cash_purchase_id: z.string().optional(),
+  handover_id: z.string().uuid().nullable().optional(),
   is_historical: z.boolean().default(false),
   items: z.array(receptionItemSchema).min(1, 'Veuillez ajouter au moins un article'),
 })

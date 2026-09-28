@@ -1,10 +1,12 @@
-import { Save, Upload } from 'lucide-react'
+﻿import { Save, Upload } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { listArticles } from '../../api/modules/catalog.api'
-import { createInvoice, getInvoice, listInvoiceableReceptions, updateInvoice } from '../../api/modules/invoices.api'
+import { createInvoice, generateInvoiceReference, getInvoice, listInvoiceableReceptions, updateInvoice } from '../../api/modules/invoices.api'
 import { listSuppliers } from '../../api/modules/suppliers.api'
+import { QuickSupplierDrawer } from '../../components/suppliers/QuickSupplierDrawer'
+import { SupplierSearchSelect } from '../../components/suppliers/SupplierSearchSelect'
 import { useAuth } from '../../hooks/useAuth'
 import type { Article } from '../../lib/catalog'
 import { calculateInvoiceItemsTotal, paymentModeLabels, paymentModes } from '../../lib/invoices'
@@ -62,6 +64,7 @@ export function InvoiceFormPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [receptions, setReceptions] = useState<Reception[]>([])
   const [file, setFile] = useState<File | undefined>()
+  const [supplierDrawerOpen, setSupplierDrawerOpen] = useState(false)
   const itemsTotal = useMemo(() => calculateInvoiceItemsTotal(values.items), [values.items])
   const amountTtc = Number(values.amount_ht ?? 0) + Number(values.amount_tva ?? 0)
   const materialCost = calculateMaterialCost({
@@ -143,6 +146,7 @@ export function InvoiceFormPage() {
       listSuppliers(),
       listInvoiceableReceptions(),
     ])
+    const generatedReference = id ? '' : await generateInvoiceReference(today)
     setArticles(articlesResult.articles)
     setSuppliers(loadedSuppliers)
     setReceptions(loadedReceptions as Reception[])
@@ -189,6 +193,7 @@ export function InvoiceFormPage() {
       const receptionId = searchParams.get('receptionId')
       const reception = loadedReceptions.find((item) => item.id === receptionId)
       if (reception) selectReception(reception as Reception, loadedSuppliers)
+      setValues((current) => ({ ...current, reference: current.reference || generatedReference }))
     }
   }, [id, searchParams, selectReception])
 
@@ -224,17 +229,18 @@ export function InvoiceFormPage() {
 
       {!isEdit && (
         <section className="surface p-5">
-          <label className="block"><span className="field-label">Reception a facturer</span><select value={values.reception_id} onChange={(event) => { const reception = receptions.find((item) => item.id === event.target.value); if (reception) selectReception(reception); else setValues(emptyForm) }} className="input mt-2"><option value="">Selectionner une reception</option>{receptions.map((reception) => <option key={reception.id} value={reception.id}>{reception.reference} - {reception.suppliers?.name}</option>)}</select></label>
-          <p className="mt-3 text-sm text-slate-600">La facture doit etre rattachee a une reception. Les articles factures sont repris automatiquement depuis la reception selectionnee.</p>
+          <label className="block"><span className="field-label">Reception marchandises a facturer</span><select value={values.reception_id} onChange={(event) => { const reception = receptions.find((item) => item.id === event.target.value); if (reception) selectReception(reception); else setValues((current) => ({ ...emptyForm, reference: current.reference })) }} className="input mt-2"><option value="">Selectionner une reception marchandises</option>{receptions.map((reception) => <option key={reception.id} value={reception.id}>{reception.reference} - {reception.suppliers?.name}</option>)}</select></label>
+          <p className="mt-3 text-sm text-slate-600">La facture doit etre rattachee a une reception marchandises.</p>
         </section>
       )}
 
       <section className="surface grid gap-4 p-5 md:grid-cols-2">
         <label className="block">
-          <span className="field-label">Numero facture interne</span>
-          <input value={values.reference ?? ''} onChange={(event) => setValues((current) => ({ ...current, reference: event.target.value }))} className="input mt-2" placeholder="Laisser vide pour generer automatiquement" />
+          <span className="field-label">Numero interne de classement</span>
+          <input value={values.reference ?? ''} onChange={(event) => setValues((current) => ({ ...current, reference: event.target.value }))} className="input mt-2" placeholder="Generation automatique" />
+          <p className="mt-2 text-xs font-semibold text-blue-800">{'G\u00e9n\u00e9rez ce num\u00e9ro, \u00e9crivez-le sur la facture papier, puis scannez la facture avec le num\u00e9ro visible.'}</p>
         </label>
-        <label className="block"><span className="field-label">Fournisseur</span><select value={values.supplier_id} onChange={(event) => changeSupplier(event.target.value)} className="input mt-2"><option value="">Selectionner</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
+        <label className="block"><span className="field-label">Fournisseur</span><div className="mt-2"><SupplierSearchSelect suppliers={suppliers} value={values.supplier_id} onChange={changeSupplier} onCreate={() => setSupplierDrawerOpen(true)} emptyLabel="Selectionner un fournisseur" /></div></label>
         <label className="block"><span className="field-label">Numero facture fournisseur</span><input value={values.invoice_number} onChange={(event) => setValues((current) => ({ ...current, invoice_number: event.target.value }))} className="input mt-2" /></label>
         <label className="block"><span className="field-label">Date facture</span><input type="date" value={values.invoice_date} onChange={(event) => setValues((current) => ({ ...current, invoice_date: event.target.value }))} className="input mt-2" /></label>
         <label className="block"><span className="field-label">Date echeance</span><input type="date" value={values.due_date} onChange={(event) => setValues((current) => ({ ...current, due_date: event.target.value }))} className="input mt-2" /></label>
@@ -289,8 +295,8 @@ export function InvoiceFormPage() {
 
       <section className="surface overflow-hidden">
         <div className="border-b border-slate-200 px-5 py-4">
-          <h2 className="text-lg font-bold">Articles factures repris de la reception</h2>
-          <p className="mt-1 text-sm text-slate-600">Lignes reprises depuis la reception. Aucun ajout ou suppression manuel n'est autorise.</p>
+          <h2 className="text-lg font-bold">Articles de la reception a facturer</h2>
+          <p className="mt-1 text-sm text-slate-600">Ces lignes viennent automatiquement de la reception selectionnee ci-dessus. Pour les modifier, corrigez d'abord la reception marchandises.</p>
         </div>
         <div className="divide-y divide-slate-200">
           {values.items.map((item, index) => {
@@ -316,12 +322,28 @@ export function InvoiceFormPage() {
 
       {selectedReception && Math.abs(receptionDifference) > 0.01 && (
         <section className="surface border border-orange-200 bg-orange-50 p-5">
-          <h2 className="font-bold text-orange-900">Ecart avec la reception</h2>
+          <h2 className="font-bold text-orange-900">Ecart avec la reception marchandises</h2>
           <p className="mt-1 text-sm text-orange-800">
-            Reception : {Number(selectedReception.total_amount ?? 0).toLocaleString('fr-FR')} Ar · Facture : {amountTtc.toLocaleString('fr-FR')} Ar · Ecart : {receptionDifference.toLocaleString('fr-FR')} Ar
+            Reception marchandises : {Number(selectedReception.total_amount ?? 0).toLocaleString('fr-FR')} Ar Â· Facture : {amountTtc.toLocaleString('fr-FR')} Ar Â· Ecart : {receptionDifference.toLocaleString('fr-FR')} Ar
           </p>
         </section>
       )}
+      <QuickSupplierDrawer
+        open={supplierDrawerOpen}
+        profileId={profile?.id}
+        onClose={() => setSupplierDrawerOpen(false)}
+        onCreated={(supplier) => {
+          const defaults = fiscalDefaultsFromSupplier(supplier)
+          setSuppliers((current) => [...current, supplier].sort((left, right) => left.name.localeCompare(right.name, 'fr', { sensitivity: 'base' })))
+          setValues((current) => ({
+            ...current,
+            supplier_id: supplier.id,
+            ...defaults,
+            items: current.items.map((item) => ({ ...item, ...defaults })),
+          }))
+          setSupplierDrawerOpen(false)
+        }}
+      />
     </form>
   )
 }

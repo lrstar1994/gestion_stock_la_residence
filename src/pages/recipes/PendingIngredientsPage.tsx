@@ -2,7 +2,7 @@ import { Plus, Search } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { createArticle, listArticles, listFamilies, listLocations, listUnits } from '../../api/modules/catalog.api'
-import { attachPendingIngredient, attachPendingIngredientGroup, listPendingIngredients } from '../../api/modules/recipes.api'
+import { attachPendingIngredient, attachPendingIngredientGroup, listPendingIngredients, updatePendingIngredientLabel } from '../../api/modules/recipes.api'
 import { useAuth } from '../../hooks/useAuth'
 import type { Article, Family, Location, Unit } from '../../lib/catalog'
 import type { PendingIngredient } from '../../lib/recipes'
@@ -22,6 +22,8 @@ export function PendingIngredientsPage() {
   const [locations, setLocations] = useState<Location[]>([])
   const [selection, setSelection] = useState<Record<string, string>>({})
   const [conversionFactors, setConversionFactors] = useState<Record<string, number>>({})
+  const [confirmedAliases, setConfirmedAliases] = useState<Record<string, boolean>>({})
+  const [correctedLabels, setCorrectedLabels] = useState<Record<string, string>>({})
   const [search, setSearch] = useState('')
   const [creatingFor, setCreatingFor] = useState<PendingIngredient | null>(null)
   const [articleDraft, setArticleDraft] = useState<ArticleDraft>({ name: '', family_id: '', unit_id: '' })
@@ -66,7 +68,7 @@ export function PendingIngredientsPage() {
     }
 
     try {
-      await attachPendingIngredient(id, articleId, { conversionFactor: conversionFactors[id] })
+      await attachPendingIngredient(id, articleId, { conversionFactor: conversionFactors[id], confirmAlias: confirmedAliases[id], profileId: profile?.id })
       toast.success('Ingredient rapproche')
       await load()
     } catch (error) {
@@ -82,11 +84,21 @@ export function PendingIngredientsPage() {
     }
 
     try {
-      const count = await attachPendingIngredientGroup(item.imported_name, articleId, { conversionFactor: conversionFactors[item.id] })
+      const count = await attachPendingIngredientGroup(item.imported_name, articleId, { conversionFactor: conversionFactors[item.id], confirmAlias: confirmedAliases[item.id], profileId: profile?.id })
       toast.success(`${count} ingredient(s) rapproches`)
       await load()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Conversion impossible')
+    }
+  }
+
+  const correctLabel = async (item: PendingIngredient) => {
+    try {
+      await updatePendingIngredientLabel(item.id, correctedLabels[item.id] ?? item.imported_name)
+      toast.success('Libellé importé corrigé')
+      await load()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Correction impossible')
     }
   }
 
@@ -133,10 +145,10 @@ export function PendingIngredientsPage() {
       )
 
       if (applyToGroup) {
-        const count = await attachPendingIngredientGroup(creatingFor.imported_name, articleId, { conversionFactor: conversionFactors[creatingFor.id] })
+        const count = await attachPendingIngredientGroup(creatingFor.imported_name, articleId, { conversionFactor: conversionFactors[creatingFor.id], confirmAlias: confirmedAliases[creatingFor.id], profileId: profile?.id })
         toast.success(`Article cree et ${count} ingredient(s) lies`)
       } else {
-        await attachPendingIngredient(creatingFor.id, articleId, { conversionFactor: conversionFactors[creatingFor.id] })
+        await attachPendingIngredient(creatingFor.id, articleId, { conversionFactor: conversionFactors[creatingFor.id], confirmAlias: confirmedAliases[creatingFor.id], profileId: profile?.id })
         toast.success('Article cree et ingredient lie')
       }
 
@@ -173,16 +185,20 @@ export function PendingIngredientsPage() {
       <section className="surface overflow-hidden">
         <div className="divide-y divide-slate-200">
           {filteredItems.map((item) => (
-            <article key={item.id} className="grid gap-3 p-4 xl:grid-cols-[1fr_130px_130px_150px_1.1fr_150px_260px] xl:items-center">
+            <article key={item.id} className="grid gap-3 p-4 xl:grid-cols-[1.2fr_140px_170px_150px_1.1fr_150px_280px] xl:items-center">
               <div>
                 <p className="font-semibold text-slate-950">{item.imported_name}</p>
                 <p className="mt-1 text-sm text-slate-500">{item.recipes?.name}</p>
+                <div className="mt-2 flex gap-2">
+                  <input className="input py-1 text-xs" value={correctedLabels[item.id] ?? item.imported_name} onChange={(event) => setCorrectedLabels((current) => ({ ...current, [item.id]: event.target.value }))} aria-label="Corriger le libellé importé" />
+                  <button type="button" className="btn-secondary px-2 py-1 text-xs" onClick={() => correctLabel(item)}>Corriger</button>
+                </div>
                 {groupedCounts[item.imported_name] > 1 && (
                   <p className="mt-1 text-xs font-semibold text-[#1E3A8A]">{groupedCounts[item.imported_name]} occurrences identiques</p>
                 )}
               </div>
-              <p className="text-sm">{Number(item.quantity)} {item.unit_name}</p>
-              <p className="text-sm">{Number(item.unit_price).toLocaleString('fr-FR')} Ar</p>
+              <div className="text-sm"><p>{Number(item.quantity)} {item.unit_name}</p><p className="font-semibold">{(item.quantity_mode ?? 'brut').toUpperCase()}</p>{item.trim_form_name && <p className="text-xs text-slate-500">Forme : {item.trim_form_name}</p>}</div>
+              <div className="text-sm"><p>Prix indicatif importé</p><p className="font-semibold">{item.imported_indicative_price == null ? '—' : `${Number(item.imported_indicative_price).toLocaleString('fr-FR')} Ar`}</p>{item.import_observation && <p className="text-xs text-slate-500">{item.import_observation}</p>}</div>
               <span className="w-fit rounded-md bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">
                 {item.status === 'ambiguous' ? 'A rapprocher' : 'A creer'}
               </span>
@@ -203,6 +219,7 @@ export function PendingIngredientsPage() {
                 />
               </label>
               <div className="flex flex-wrap gap-2">
+                <label className="flex w-full items-center gap-2 text-xs text-slate-700"><input type="checkbox" checked={confirmedAliases[item.id] ?? false} onChange={(event) => setConfirmedAliases((current) => ({ ...current, [item.id]: event.target.checked }))} />Mémoriser cet alias confirmé</label>
                 <button type="button" className="btn-primary" onClick={() => resolveOne(item.id)}>Lier</button>
                 {groupedCounts[item.imported_name] > 1 && (
                   <button type="button" className="btn-secondary" onClick={() => resolveGroup(item)}>Lier tous</button>

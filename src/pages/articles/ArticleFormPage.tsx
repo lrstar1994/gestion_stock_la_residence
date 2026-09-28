@@ -4,13 +4,29 @@ import { useEffect, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { createArticle, getArticle, listFamilies, listLocations, listSubCategories, listUnits, updateArticle } from '../../api/modules/catalog.api'
+import { createArticle, getArticle, listArticleEditorFamilies, listArticleEditorSubCategories, listArticleEditorUnits, listLocations, updateArticle, updateArticleSensitive } from '../../api/modules/catalog.api'
+import { getMyPinStatus } from '../../api/modules/sensitiveActions.api'
 import { listSuppliers } from '../../api/modules/suppliers.api'
+import { SensitiveActionModal } from '../../components/SensitiveActionModal'
 import { useAuth } from '../../hooks/useAuth'
-import { articleSchema } from '../../lib/catalog'
+import { articleNatureLabels, articleNatures, articleSchema } from '../../lib/catalog'
 import type { ArticleFormValues, Family, Location, SubCategory, Unit } from '../../lib/catalog'
 import type { Supplier } from '../../lib/suppliers'
 import type { ReactNode } from 'react'
+
+function describeReferenceLoadError(error: unknown) {
+  if (typeof error !== 'object' || error === null) return String(error)
+  const details = error as { code?: string; message?: string; details?: string; hint?: string }
+  return [details.code ? `(${details.code})` : '', details.message ?? 'Erreur inconnue', details.details, details.hint]
+    .filter(Boolean)
+    .join(' — ')
+}
+
+function loadNamedReference<T>(label: string, load: () => Promise<T>) {
+  return load().catch((error: unknown) => {
+    throw new Error(`${label} : ${describeReferenceLoadError(error)}`)
+  })
+}
 
 export function ArticleFormPage() {
   const { id } = useParams()
@@ -22,7 +38,12 @@ export function ArticleFormPage() {
   const [units, setUnits] = useState<Unit[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
-  const [loading, setLoading] = useState(isEdit)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [pinDefined, setPinDefined] = useState(false)
+  const [pinOpen, setPinOpen] = useState(false)
+  const [pendingValues, setPendingValues] = useState<ArticleFormValues | null>(null)
+  const [originalSensitiveValues, setOriginalSensitiveValues] = useState<{ unit_id: string; stockable: boolean; status: ArticleFormValues['status'] } | null>(null)
 
   const form = useForm<ArticleFormValues>({
     resolver: zodResolver(articleSchema),
@@ -36,6 +57,12 @@ export function ArticleFormPage() {
       min_stock: 0,
       sellable_without_transformation: false,
       usable_in_recipes: false,
+      nature: 'autre',
+      stockable: true,
+      locations_restricted: false,
+      durable_equipment: false,
+      indicative_price: null,
+      indicative_price_note: '',
       status: 'active',
       location_ids: [],
     },
@@ -43,59 +70,96 @@ export function ArticleFormPage() {
   const selectedSupplier = useWatch({ control: form.control, name: 'default_supplier' })
   const selectedFamilyId = useWatch({ control: form.control, name: 'family_id' })
   const selectedSubCategory = useWatch({ control: form.control, name: 'sub_family' })
+  const selectedLocations = useWatch({ control: form.control, name: 'location_ids' })
+  const stockable = useWatch({ control: form.control, name: 'stockable' })
+  const locationsRestricted = useWatch({ control: form.control, name: 'locations_restricted' })
   const filteredSubCategories = subCategories.filter((subCategory) => subCategory.family_id === selectedFamilyId)
 
   useEffect(() => {
-    Promise.all([listFamilies(), listSubCategories(), listUnits(), listLocations(), listSuppliers()])
-      .then(([loadedFamilies, loadedSubCategories, loadedUnits, loadedLocations, loadedSuppliers]) => {
+    let cancelled = false
+    setLoading(true)
+    setLoadError(null)
+    Promise.all([
+      loadNamedReference('Familles', () => listArticleEditorFamilies(isEdit)),
+      loadNamedReference('Sous-catégories', () => listArticleEditorSubCategories(isEdit)),
+      loadNamedReference('Unités', () => listArticleEditorUnits(isEdit)),
+      loadNamedReference('Localisations', () => listLocations('', isEdit)),
+      loadNamedReference('Fournisseurs', () => listSuppliers()),
+      id ? loadNamedReference('Fiche article', () => getArticle(id)) : Promise.resolve(null),
+    ])
+      .then(([loadedFamilies, loadedSubCategories, loadedUnits, loadedLocations, loadedSuppliers, article]) => {
+        if (cancelled) return
         setFamilies(loadedFamilies)
         setSubCategories(loadedSubCategories)
         setUnits(loadedUnits)
         setLocations(loadedLocations)
         setSuppliers(loadedSuppliers)
-        const defaultLocation = loadedLocations.find((location) => location.is_magasin_general)
-        if (!isEdit && defaultLocation) {
-          form.setValue('location_ids', [defaultLocation.id])
+        if (article) {
+          setOriginalSensitiveValues({ unit_id: article.unit_id, stockable: article.stockable ?? true, status: article.status })
+          form.reset({
+            name: article.name,
+            family_id: article.family_id,
+            sub_family: article.sub_family ?? '',
+            unit_id: article.unit_id,
+            packaging: article.packaging ?? '',
+            default_supplier: article.default_supplier ?? '',
+            min_stock: Number(article.min_stock ?? 0),
+            sellable_without_transformation: Boolean(article.sellable_without_transformation),
+            usable_in_recipes: Boolean(article.usable_in_recipes),
+            nature: article.nature ?? 'autre',
+            stockable: article.stockable ?? true,
+            locations_restricted: Boolean(article.locations_restricted),
+            durable_equipment: Boolean(article.durable_equipment),
+            indicative_price: article.indicative_price === null ? null : Number(article.indicative_price),
+            indicative_price_note: article.indicative_price_note ?? '',
+            status: article.status,
+            location_ids: article.locations_restricted ? article.article_locations?.map((item) => item.locations.id) ?? [] : [],
+          })
         }
       })
-      .catch(() => toast.error('Une erreur est survenue. Veuillez reessayer.'))
-  }, [form, isEdit])
+      .catch((error) => {
+        if (cancelled) return
+        const message = error instanceof Error ? error.message : 'Impossible de charger toutes les données de l’article.'
+        setLoadError(message)
+        toast.error(message)
+      })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [form, id, isEdit])
 
   useEffect(() => {
-    if (!id) {
-      return
+    if (profile?.status === 'active') {
+      getMyPinStatus().then((status) => setPinDefined(status.pin_defined)).catch(() => setPinDefined(false))
     }
-
-    setLoading(true)
-    getArticle(id)
-      .then((article) => {
-        form.reset({
-          name: article.name,
-          family_id: article.family_id,
-          sub_family: article.sub_family ?? '',
-          unit_id: article.unit_id,
-          packaging: article.packaging ?? '',
-          default_supplier: article.default_supplier ?? '',
-          min_stock: Number(article.min_stock ?? 0),
-          sellable_without_transformation: Boolean(article.sellable_without_transformation),
-          usable_in_recipes: Boolean(article.usable_in_recipes),
-          status: article.status,
-          location_ids: article.article_locations?.map((item) => item.locations.id) ?? [],
-        })
-      })
-      .catch(() => toast.error('Article introuvable'))
-      .finally(() => setLoading(false))
-  }, [form, id])
+  }, [profile?.status])
 
   const onSubmit = async (values: ArticleFormValues) => {
+    const sensitiveChange = Boolean(id && originalSensitiveValues && (
+      values.unit_id !== originalSensitiveValues.unit_id
+      || values.stockable !== originalSensitiveValues.stockable
+      || values.status !== originalSensitiveValues.status
+    ))
+    if (sensitiveChange) {
+      setPendingValues(values)
+      setPinOpen(true)
+      return
+    }
+    await save(values)
+  }
+
+  const save = async (values: ArticleFormValues, pin?: string, reason?: string) => {
     try {
       if (id) {
-        await updateArticle(id, values, profile?.id)
-        toast.success('Article mis a jour avec succes')
+        if (pin) {
+          await updateArticleSensitive(id, values, pin, reason ?? '')
+        } else {
+          await updateArticle(id, values, profile?.id)
+        }
+        toast.success('Article mis à jour avec succès')
         navigate(`/articles/${id}`)
       } else {
         await createArticle(values, profile?.id)
-        toast.success('Article cree avec succes')
+        toast.success('Article créé avec succès')
         navigate('/articles')
       }
     } catch (error) {
@@ -105,6 +169,9 @@ export function ArticleFormPage() {
 
   if (loading) {
     return <div className="surface p-6 text-sm text-slate-600">Chargement...</div>
+  }
+  if (loadError) {
+    return <div className="surface border border-red-200 p-6 text-sm text-red-800">Impossible de préparer la fiche sans perdre les données existantes : {loadError}</div>
   }
 
   return (
@@ -116,10 +183,10 @@ export function ArticleFormPage() {
 
       <form onSubmit={form.handleSubmit(onSubmit)} className="surface p-5">
         <div className="grid gap-5 lg:grid-cols-2">
-          <Field label="Nom normalise" error={form.formState.errors.name?.message}>
+          <Field label="Nom normalisé" error={form.formState.errors.name?.message}>
             <input {...form.register('name')} className="input mt-2" />
           </Field>
-          <Field label="Categorie" error={form.formState.errors.family_id?.message}>
+          <Field label="Catégorie" error={form.formState.errors.family_id?.message}>
             <select
               {...form.register('family_id')}
               onChange={(event) => {
@@ -128,15 +195,15 @@ export function ArticleFormPage() {
               }}
               className="input mt-2"
             >
-              <option value="">Selectionner</option>
+              <option value="">Sélectionner</option>
               {families.map((family) => (
                 <option key={family.id} value={family.id}>{family.name}</option>
               ))}
             </select>
           </Field>
-          <Field label="Sous-categorie">
+          <Field label="Sous-catégorie">
             <select {...form.register('sub_family')} disabled={!selectedFamilyId} className="input mt-2 disabled:cursor-not-allowed disabled:bg-slate-100">
-              <option value="">{selectedFamilyId ? 'Selectionner' : 'Selectionnez une categorie'}</option>
+              <option value="">{selectedFamilyId ? 'Sélectionner' : 'Sélectionnez une catégorie'}</option>
               {selectedSubCategory && !filteredSubCategories.some((subCategory) => subCategory.name === selectedSubCategory) && (
                 <option value={selectedSubCategory}>{selectedSubCategory}</option>
               )}
@@ -145,9 +212,9 @@ export function ArticleFormPage() {
               ))}
             </select>
           </Field>
-          <Field label="Unite de gestion" error={form.formState.errors.unit_id?.message}>
+          <Field label="Unité stock de référence" error={form.formState.errors.unit_id?.message}>
             <select {...form.register('unit_id')} className="input mt-2">
-              <option value="">Selectionner</option>
+              <option value="">Sélectionner</option>
               {units.map((unit) => (
                 <option key={unit.id} value={unit.id}>{unit.name} ({unit.abbreviation})</option>
               ))}
@@ -156,7 +223,7 @@ export function ArticleFormPage() {
           <Field label="Conditionnement">
             <input {...form.register('packaging')} className="input mt-2" placeholder="12 bouteilles, sac de 25kg..." />
           </Field>
-          <Field label="Fournisseur habituel">
+          <Field label="Fournisseur principal">
             <select {...form.register('default_supplier')} className="input mt-2">
               <option value="">Aucun fournisseur</option>
               {selectedSupplier && !suppliers.some((supplier) => supplier.name === selectedSupplier) && (
@@ -170,11 +237,30 @@ export function ArticleFormPage() {
             </select>
           </Field>
           <Field label="Stock minimum" error={form.formState.errors.min_stock?.message}>
-            <input {...form.register('min_stock', { valueAsNumber: true })} type="number" step="0.01" min="0" className="input mt-2" />
+            <input {...form.register('min_stock', { valueAsNumber: true })} disabled={!stockable} type="number" step="0.01" min="0" className="input mt-2 disabled:bg-slate-100" />
+          </Field>
+          <Field label="Nature de l’article">
+            <select {...form.register('nature')} className="input mt-2">
+              {articleNatures.map((nature) => <option key={nature} value={nature}>{articleNatureLabels[nature]}</option>)}
+            </select>
+          </Field>
+          <label className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-700">
+            <input type="checkbox" {...form.register('stockable')} className="h-4 w-4 rounded border-slate-300 text-[#1E3A8A]" />
+            Article stockable
+          </label>
+          <label className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-700">
+            <input type="checkbox" {...form.register('durable_equipment')} className="h-4 w-4 rounded border-slate-300 text-[#1E3A8A]" />
+            Immobilisation / équipement durable
+          </label>
+          <Field label="Prix indicatif (hors historique officiel)">
+            <input {...form.register('indicative_price', { setValueAs: (value) => value === '' ? null : Number(value) })} type="number" min="0" step="0.01" className="input mt-2" />
+          </Field>
+          <Field label="Note du prix indicatif">
+            <input {...form.register('indicative_price_note')} className="input mt-2" placeholder="Source ou contexte du prix" />
           </Field>
           <label className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-700">
             <input type="checkbox" {...form.register('sellable_without_transformation')} className="h-4 w-4 rounded border-slate-300 text-[#1E3A8A]" />
-            A vendre sans transformation
+            À vendre sans transformation
           </label>
           <label className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-700">
             <input type="checkbox" {...form.register('usable_in_recipes')} className="h-4 w-4 rounded border-slate-300 text-[#1E3A8A]" />
@@ -184,34 +270,71 @@ export function ArticleFormPage() {
             <select {...form.register('status')} className="input mt-2">
               <option value="active">Actif</option>
               <option value="inactive">Inactif</option>
-              <option value="archived">Archive</option>
+              <option value="archived">Archivé</option>
             </select>
           </Field>
         </div>
 
         <div className="mt-6">
-          <p className="field-label">Localisations autorisees</p>
-          {form.formState.errors.location_ids?.message && <span className="mt-2 block text-sm text-red-600">{form.formState.errors.location_ids.message}</span>}
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {locations.map((location) => (
-              <label key={location.id} className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
-                <input type="checkbox" value={location.id} {...form.register('location_ids')} className="h-4 w-4 rounded border-slate-300 text-[#1E3A8A]" />
-                {location.name}
-              </label>
-            ))}
-          </div>
+          {stockable && <div className="mt-4 space-y-4">
+            <label className="flex items-start gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-700">
+              <input type="radio" name="article-location-mode" value="all" checked={!locationsRestricted} onChange={() => {
+                form.setValue('locations_restricted', false, { shouldDirty: true, shouldValidate: true })
+                form.setValue('location_ids', [], { shouldDirty: true })
+              }} className="mt-0.5 h-4 w-4 border-slate-300 text-[#1E3A8A]" />
+              <span><span className="block">Toutes les localisations actives</span><span className="mt-1 block text-xs font-normal text-slate-600">Valeur par défaut. Autoriser une localisation ne crée aucun stock.</span></span>
+            </label>
+            <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+              <input type="radio" name="article-location-mode" value="restricted" checked={locationsRestricted} onChange={() => {
+                form.setValue('locations_restricted', true, { shouldDirty: true, shouldValidate: true })
+              }} className="h-4 w-4 border-slate-300 text-[#1E3A8A]" />
+              Restreindre à certaines localisations
+            </label>
+            {locationsRestricted && <>
+              {form.formState.errors.location_ids?.message && <span className="block text-sm text-red-600">{form.formState.errors.location_ids.message}</span>}
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {locations.map((location) => {
+                  const isSelected = selectedLocations.includes(location.id)
+                  const isInactive = location.is_active === false
+                  return <label key={location.id} className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+                    <input type="checkbox" value={location.id} disabled={isInactive && !isSelected} {...form.register('location_ids')} className="h-4 w-4 rounded border-slate-300 text-[#1E3A8A]" />
+                    {location.name}{isInactive ? ' (inactive — sélection existante)' : ''}
+                  </label>
+                })}
+              </div>
+            </>}
+          </div>}
         </div>
 
         <div className="mt-7 flex flex-col gap-3 sm:flex-row">
           <button type="submit" disabled={form.formState.isSubmitting} className="btn-primary">
             <Save className="mr-2 h-4 w-4" />
-            {isEdit ? 'Mettre a jour' : 'Creer'}
+            {isEdit ? 'Mettre à jour' : 'Créer'}
           </button>
           <Link to={isEdit && id ? `/articles/${id}` : '/articles'} className="btn-secondary">
             Annuler
           </Link>
         </div>
       </form>
+      <SensitiveActionModal
+        open={pinOpen}
+        title="Valider la modification sensible"
+        description="Le changement d’unité stock ou du caractère stockable peut modifier l’interprétation du stock et des conversions."
+        permissionLabel="items.sensitive_update.validate"
+        pinDefined={pinDefined}
+        requireReason
+        busy={form.formState.isSubmitting}
+        onCancel={() => {
+          setPinOpen(false)
+          setPendingValues(null)
+        }}
+        onConfirm={async ({ pin, reason }) => {
+          if (!pendingValues) return
+          await save(pendingValues, pin, reason)
+          setPendingValues(null)
+          setPinOpen(false)
+        }}
+      />
     </div>
   )
 }
