@@ -27,8 +27,13 @@ export function PurchaseNeedsPage() {
   const generate = async () => {
     if (!id) return
     try {
-      setNeeds(await generatePurchaseNeeds(id, profile?.id))
-      toast.success("Besoins d'achat generes")
+      const result = await generatePurchaseNeeds(id, profile?.id)
+      setNeeds(result.needs)
+      if (result.conflicts.length > 0) {
+        toast.error(`${result.conflicts.length} besoin(s) protégé(s) conservé(s) : décision nécessaire.`)
+      } else {
+        toast.success("Besoins d'achat rapprochés")
+      }
     } catch {
       toast.error('Une erreur est survenue. Veuillez reessayer.')
     }

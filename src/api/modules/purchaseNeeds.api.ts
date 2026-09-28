@@ -288,7 +288,8 @@ export async function getPurchaseNeed(id: string) {
 }
 
 export async function validatePurchaseNeed(id: string, validatorProfileId?: string, comment?: string) {
-  const { error } = await supabase.schema('stock')
+  await getMutableNeedForDecision(id)
+  const { data: updated, error } = await supabase.schema('stock')
     .from('purchase_needs')
     .update({
       status: 'valide',
@@ -297,8 +298,12 @@ export async function validatePurchaseNeed(id: string, validatorProfileId?: stri
       validation_comment: cleanNullable(comment),
     })
     .eq('id', id)
+    .in('status', ['a_faire', 'en_cours'])
+    .select('id')
+    .single()
 
   if (error) throw error
+  if (!updated) throw new Error('Le besoin a changé pendant la validation')
 }
 
 export async function cancelPurchaseNeed(id: string, profileId: string | undefined, reason: string) {
@@ -325,7 +330,8 @@ export async function cancelPurchaseNeed(id: string, profileId: string | undefin
 }
 export async function refusePurchaseNeed(id: string, validatorProfileId: string | undefined, reason: string) {
   if (!reason.trim()) throw new Error('Motif obligatoire en cas de refus')
-  const { error } = await supabase.schema('stock')
+  await getMutableNeedForDecision(id)
+  const { data: updated, error } = await supabase.schema('stock')
     .from('purchase_needs')
     .update({
       status: 'refuse',
@@ -334,8 +340,12 @@ export async function refusePurchaseNeed(id: string, validatorProfileId: string 
       validation_comment: reason.trim(),
     })
     .eq('id', id)
+    .in('status', ['a_faire', 'en_cours'])
+    .select('id')
+    .single()
 
   if (error) throw error
+  if (!updated) throw new Error('Le besoin a changé pendant le refus')
 }
 
 export async function applyPurchaseNeedLineDecisions(pin: string, decisions: Array<{ purchase_need_id: string; decision: 'cash' | 'supplier' | 'supplier_delivery' | 'refused'; supplier_id?: string | null; supplier_name?: string | null; supplier_phone?: string | null; refused_reason?: string | null; direction_comment?: string | null }>) {
@@ -348,7 +358,12 @@ export async function applyPurchaseNeedLineDecisions(pin: string, decisions: Arr
 }
 export async function validatePurchaseNeeds(ids: string[], validatorProfileId?: string) {
   if (ids.length === 0) return
-  const { error } = await supabase.schema('stock')
+  const { data: current, error: readError } = await supabase.schema('stock').from('purchase_needs').select('id, status').in('id', ids)
+  if (readError) throw readError
+  if ((current ?? []).length !== ids.length || (current ?? []).some((need) => !['a_faire', 'en_cours'].includes(need.status))) {
+    throw new Error('Seuls les besoins en attente peuvent être validés')
+  }
+  const { data: updated, error } = await supabase.schema('stock')
     .from('purchase_needs')
     .update({
       status: 'valide',
@@ -356,8 +371,11 @@ export async function validatePurchaseNeeds(ids: string[], validatorProfileId?: 
       validated_at: new Date().toISOString(),
     })
     .in('id', ids)
+    .in('status', ['a_faire', 'en_cours'])
+    .select('id')
 
   if (error) throw error
+  if ((updated ?? []).length !== ids.length) throw new Error('Un besoin a changé pendant la validation groupée')
 }
 
 export async function groupPurchaseNeeds(ids: string[], supplierId: string, profileId?: string) {
@@ -406,6 +424,19 @@ export async function groupPurchaseNeeds(ids: string[], supplierId: string, prof
     supplierName: (supplier as Supplier).name,
     needIds: ids,
   }
+}
+
+async function getMutableNeedForDecision(id: string) {
+  const { data, error } = await supabase.schema('stock')
+    .from('purchase_needs')
+    .select('id, status, decision_status, processing_mode')
+    .eq('id', id)
+    .single()
+  if (error) throw error
+  if (!['a_faire', 'en_cours'].includes(data.status) || (data.decision_status && data.decision_status !== 'pending') || (data.processing_mode && data.processing_mode !== 'none')) {
+    throw new Error('Ce besoin est déjà engagé ou orienté et ne peut plus être modifié.')
+  }
+  return data
 }
 
 export async function autoGroupValidatedNeeds(profileId?: string) {

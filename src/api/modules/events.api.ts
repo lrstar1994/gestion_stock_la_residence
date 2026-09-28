@@ -225,33 +225,58 @@ export async function generatePurchaseNeeds(eventId: string, profileId?: string)
     }
   }
 
-  const { error: deleteError } = await supabase.schema('stock').from('purchase_needs').delete().eq('event_id', eventId)
-  if (deleteError) throw deleteError
+  const { data: existingNeeds, error: existingError } = await supabase.schema('stock')
+    .from('purchase_needs')
+    .select('id, article_id, unit_id, status')
+    .eq('event_id', eventId)
+  if (existingError) throw existingError
 
-  const rows = [...needs.values()].map((need) => ({
-    event_id: eventId,
-    article_id: need.articleId,
-    quantity: need.quantity,
-    quantity_needed: need.quantity,
-    unit_id: need.unitId,
-    origin: 'evenement' as const,
-    type_de_besoin: 'besoin_ponctuel' as const,
-    destination_prevue: 'evenement_banquet_seminaire' as const,
-    source_du_calcul: 'besoins_theoriques_evenement' as const,
-    service_demandeur: 'cuisine' as const,
-    urgency: 'normal' as const,
-    estimated_price: need.quantity > 0 ? need.cost / need.quantity : null,
-    estimated_cost: need.cost,
-    status: 'a_faire' as const,
-    created_by: profileId,
-  }))
+  const mutableStatuses = new Set(['a_faire', 'en_cours'])
+  const candidates = new Map<string, Array<{ id: string; status: string }>>()
+  for (const need of existingNeeds ?? []) {
+    if (!mutableStatuses.has(need.status)) continue
+    const key = `${need.article_id}:${need.unit_id}`
+    candidates.set(key, [...(candidates.get(key) ?? []), { id: need.id, status: need.status }])
+  }
+  const matchedIds = new Set<string>()
+  const conflicts = (existingNeeds ?? [])
+    .filter((need) => !mutableStatuses.has(need.status))
+    .map((need) => ({ id: need.id as string, status: need.status as string }))
 
-  if (rows.length > 0) {
-    const { error } = await supabase.schema('stock').from('purchase_needs').insert(rows)
-    if (error) throw error
+  for (const need of needs.values()) {
+    const key = `${need.articleId}:${need.unitId}`
+    const candidate = candidates.get(key)?.find((item) => !matchedIds.has(item.id))
+    const values = {
+      article_id: need.articleId,
+      quantity: need.quantity,
+      quantity_needed: need.quantity,
+      unit_id: need.unitId,
+      origin: 'evenement' as const,
+      type_de_besoin: 'besoin_ponctuel' as const,
+      destination_prevue: 'evenement_banquet_seminaire' as const,
+      source_du_calcul: 'besoins_theoriques_evenement' as const,
+      service_demandeur: 'cuisine' as const,
+      urgency: 'normal' as const,
+      estimated_price: need.quantity > 0 ? need.cost / need.quantity : null,
+      estimated_cost: need.cost,
+      updated_by: profileId,
+    }
+    if (candidate) {
+      matchedIds.add(candidate.id)
+      const { error } = await supabase.schema('stock').from('purchase_needs').update(values).eq('id', candidate.id).in('status', [...mutableStatuses])
+      if (error) throw error
+    } else {
+      const { error } = await supabase.schema('stock').from('purchase_needs').insert({
+        ...values,
+        event_id: eventId,
+        status: 'a_faire' as const,
+        created_by: profileId,
+      })
+      if (error) throw error
+    }
   }
 
-  return listPurchaseNeeds(eventId)
+  return { needs: await listPurchaseNeeds(eventId), conflicts }
 }
 
 export async function listPurchaseNeeds(eventId: string) {
@@ -266,7 +291,18 @@ export async function listPurchaseNeeds(eventId: string) {
 }
 
 export async function updatePurchaseNeedStatus(id: string, status: PurchaseNeedStatus) {
-  const { error } = await supabase.schema('stock').from('purchase_needs').update({ status }).eq('id', id)
+  const { data: current, error: readError } = await supabase.schema('stock').from('purchase_needs').select('id, status').eq('id', id).single()
+  if (readError) throw readError
+  const allowed: Record<string, string[]> = {
+    a_faire: ['a_faire', 'en_cours', 'valide', 'refuse', 'annule'],
+    en_cours: ['en_cours', 'valide', 'refuse', 'annule'],
+    valide: ['valide', 'regroupe'],
+    regroupe: ['regroupe'],
+    refuse: ['refuse'],
+    annule: ['annule'],
+  }
+  if (!(allowed[current.status] ?? []).includes(status)) throw new Error(`Transition de besoin interdite : ${current.status} -> ${status}`)
+  const { error } = await supabase.schema('stock').from('purchase_needs').update({ status }).eq('id', id).eq('status', current.status)
   if (error) throw error
 }
 

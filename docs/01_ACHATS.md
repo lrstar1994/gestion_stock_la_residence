@@ -65,6 +65,7 @@ La vue `purchase_actual_price_candidates` est la couche canonique de lecture. Le
 - Besoins et achats : VALIDÉ MÉTIER ; CODÉ LOCALEMENT ; DÉPLOYÉ TEST par lots historiques ; VALIDÉ TEST selon rapports existants.
 - Champs métier 180005 : VALIDÉ MÉTIER ; CODÉ LOCALEMENT ; DÉPLOYÉ TEST déclaré ; VALIDÉ TEST à confirmer sur les parcours réels.
 - Prix réel qualifié et RPC de lecture : VALIDÉ MÉTIER ; CODÉ LOCALEMENT ; migration additive 202609230001 non déployée TEST ; VALIDÉ TEST non effectué.
+- Sécurisation locale du Lot A : CODÉ LOCALEMENT. La régénération événementielle rapproche les seuls besoins `a_faire`/`en_cours` et conserve les autres en signalant un écart ; les transitions et remplacements de commandes appliquent des préconditions de statut et de réception. Les garanties transactionnelles côté base et la concurrence restent à préparer avant tout déploiement TEST.
 
 === SYNCHRO CODEX ===
 Module principal: Achats

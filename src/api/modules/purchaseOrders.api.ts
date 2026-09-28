@@ -108,6 +108,8 @@ export async function createPurchaseOrder(values: PurchaseOrderFormValues, profi
 export async function updatePurchaseOrder(id: string, values: PurchaseOrderFormValues, profileId?: string) {
   const current = await getPurchaseOrder(id)
   if (current.status !== 'brouillon') throw new Error('Une commande validee ne peut plus etre modifiee')
+  await assertOrderDraftMutable(id)
+  await assertNeedLinksCanBeReplaced(id, values.need_ids ?? [])
 
   const total = calculateOrderTotal(values.items)
   const { error } = await supabase.schema('stock')
@@ -133,6 +135,7 @@ export async function updatePurchaseOrder(id: string, values: PurchaseOrderFormV
 }
 
 async function replaceOrderItems(orderId: string, items: PurchaseOrderFormValues['items']) {
+  await assertOrderDraftMutable(orderId)
   const { error: deleteError } = await supabase.schema('stock').from('purchase_order_items').delete().eq('purchase_order_id', orderId)
   if (deleteError) throw deleteError
 
@@ -155,6 +158,11 @@ async function replaceOrderItems(orderId: string, items: PurchaseOrderFormValues
 
 async function linkNeeds(orderId: string, needIds: string[], supplierId: string, profileId?: string) {
   if (needIds.length === 0) return
+  const { data: needs, error: needsReadError } = await supabase.schema('stock').from('purchase_needs').select('id, status, decision_status, processing_mode').in('id', needIds)
+  if (needsReadError) throw needsReadError
+  if ((needs ?? []).length !== needIds.length || (needs ?? []).some((need) => need.status !== 'valide' || (need.decision_status && need.decision_status !== 'pending') || (need.processing_mode && need.processing_mode !== 'none'))) {
+    throw new Error('Seuls les besoins valides et non engagés peuvent être liés à une commande')
+  }
   const links = needIds.map((needId) => ({ purchase_order_id: orderId, need_id: needId }))
   const { error: linkError } = await supabase.schema('stock').from('purchase_order_needs').insert(links)
   if (linkError) throw linkError
@@ -165,14 +173,16 @@ async function linkNeeds(orderId: string, needIds: string[], supplierId: string,
     .in('id', needIds)
   if (error) throw error
 
-  const { data: needs } = await supabase.schema('stock').from('purchase_needs').select('group_id').in('id', needIds)
-  const groupIds = [...new Set((needs ?? []).map((need) => need.group_id).filter(Boolean))]
+  const { data: groupedNeeds } = await supabase.schema('stock').from('purchase_needs').select('group_id').in('id', needIds)
+  const groupIds = [...new Set((groupedNeeds ?? []).map((need) => need.group_id).filter(Boolean))]
   if (groupIds.length > 0) {
     await supabase.schema('stock').from('purchase_groups').update({ status: 'commande_creee' }).in('id', groupIds)
   }
 }
 
 async function replaceNeedLinks(orderId: string, needIds: string[], supplierId: string, profileId?: string) {
+  await assertOrderDraftMutable(orderId)
+  await assertNeedLinksCanBeReplaced(orderId, needIds)
   const { data: existing, error: existingError } = await supabase.schema('stock').from('purchase_order_needs').select('need_id').eq('purchase_order_id', orderId)
   if (existingError) throw existingError
   const oldIds = (existing ?? []).map((item) => item.need_id as string)
@@ -185,6 +195,40 @@ async function replaceNeedLinks(orderId: string, needIds: string[], supplierId: 
   const { error: deleteError } = await supabase.schema('stock').from('purchase_order_needs').delete().eq('purchase_order_id', orderId)
   if (deleteError) throw deleteError
   await linkNeeds(orderId, needIds, supplierId, profileId)
+}
+
+async function assertOrderDraftMutable(orderId: string) {
+  const { data: order, error } = await supabase.schema('stock').from('purchase_orders').select('id, status').eq('id', orderId).single()
+  if (error) throw error
+  if (order.status !== 'brouillon') throw new Error('Les lignes et besoins ne peuvent être remplacés que sur une commande brouillon')
+  const { count, error: receptionError } = await supabase.schema('stock').from('receptions').select('id', { count: 'exact', head: true }).eq('purchase_order_id', orderId)
+  if (receptionError) throw receptionError
+  if ((count ?? 0) > 0) throw new Error('Cette commande possède déjà une réception et ne peut plus être remplacée')
+}
+
+async function assertNeedLinksCanBeReplaced(orderId: string, requestedNeedIds: string[]) {
+  const { data: existing, error: existingError } = await supabase.schema('stock').from('purchase_order_needs').select('need_id').eq('purchase_order_id', orderId)
+  if (existingError) throw existingError
+  const allIds = [...new Set([...(existing ?? []).map((row) => row.need_id as string), ...requestedNeedIds])]
+  if (allIds.length === 0) return
+
+  const { data: needs, error: needsError } = await supabase.schema('stock').from('purchase_needs').select('id, status, decision_status, processing_mode').in('id', allIds)
+  if (needsError) throw needsError
+  const byId = new Map((needs ?? []).map((need) => [need.id, need]))
+  for (const id of allIds) {
+    const need = byId.get(id)
+    if (!need) throw new Error('Besoin introuvable lors du remplacement des liens')
+    if (need.status !== 'valide' && need.status !== 'regroupe') throw new Error('Un besoin soumis, refusé ou annulé ne peut pas être détaché ou regroupé automatiquement')
+    if (need.decision_status && need.decision_status !== 'pending') throw new Error('Un besoin avec une décision engagée ne peut pas être remplacé')
+    if (need.processing_mode && need.processing_mode !== 'none') throw new Error('Un besoin déjà orienté ne peut pas être remplacé')
+  }
+
+  const { data: cashLinks, error: cashError } = await supabase.schema('stock').from('cash_purchase_items').select('purchase_need_id').in('purchase_need_id', allIds)
+  if (cashError) throw cashError
+  if ((cashLinks ?? []).length > 0) throw new Error('Un besoin déjà lié à un achat espèces ne peut pas être remplacé')
+  const { data: otherLinks, error: otherError } = await supabase.schema('stock').from('purchase_order_needs').select('need_id').in('need_id', allIds).neq('purchase_order_id', orderId)
+  if (otherError) throw otherError
+  if ((otherLinks ?? []).length > 0) throw new Error('Un besoin déjà lié à une autre commande ne peut pas être remplacé')
 }
 
 async function generatePurchaseOrderReference() {
