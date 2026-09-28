@@ -9,22 +9,22 @@ const needs = await readFile(new URL('src/api/modules/purchaseNeeds.api.ts', roo
 const orders = await readFile(new URL('src/api/modules/purchaseOrders.api.ts', root), 'utf8')
 
 test('la régénération événementielle rapproche les brouillons sans supprimer les besoins protégés', () => {
-  assert.match(events, /const mutableStatuses = new Set\(\['a_faire', 'en_cours'\]\)/)
-  assert.match(events, /const conflicts = \(existingNeeds \?\? \[\]\)/)
+  assert.match(events, /regenerate_event_purchase_needs/)
+  assert.match(events, /p_request_id: crypto\.randomUUID\(\)/)
   assert.doesNotMatch(events, /purchase_needs'\)\.delete\(\)\.eq\('event_id'/)
   assert.match(eventPage, /result\.conflicts\.length > 0/)
 })
 
 test('les transitions de besoins utilisent des préconditions de statut', () => {
-  assert.match(needs, /getMutableNeedForDecision\(id\)/)
-  assert.match(needs, /\.in\('status', \['a_faire', 'en_cours'\]\)/)
-  assert.match(needs, /Seuls les besoins en attente peuvent être validés/)
+  assert.match(needs, /apply_purchase_need_line_decisions/)
+  assert.match(needs, /Les décisions Direction doivent passer par apply_purchase_need_line_decisions avec PIN/)
 })
 
 test('les commandes engagées ou réceptionnées ne peuvent pas être remplacées', () => {
   assert.match(orders, /assertOrderDraftMutable\(orderId\)/)
   assert.match(orders, /order\.status !== 'brouillon'/)
   assert.match(orders, /receptions'.*purchase_order_id/s)
-  assert.match(orders, /assertNeedLinksCanBeReplaced\(orderId, needIds\)/)
+  assert.match(orders, /replace_purchase_order_draft/)
+  assert.match(orders, /replace_purchase_order_items/)
   assert.match(orders, /Un besoin déjà lié à un achat espèces ne peut pas être remplacé/)
 })

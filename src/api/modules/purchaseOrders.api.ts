@@ -106,15 +106,14 @@ export async function createPurchaseOrder(values: PurchaseOrderFormValues, profi
 }
 
 export async function updatePurchaseOrder(id: string, values: PurchaseOrderFormValues, profileId?: string) {
+  void profileId
   const current = await getPurchaseOrder(id)
   if (current.status !== 'brouillon') throw new Error('Une commande validee ne peut plus etre modifiee')
   await assertOrderDraftMutable(id)
   await assertNeedLinksCanBeReplaced(id, values.need_ids ?? [])
 
   const total = calculateOrderTotal(values.items)
-  const { error } = await supabase.schema('stock')
-    .from('purchase_orders')
-    .update({
+  const orderPatch = {
       supplier_id: values.supplier_id,
       order_date: values.order_date,
       delivery_date: values.delivery_date,
@@ -123,24 +122,33 @@ export async function updatePurchaseOrder(id: string, values: PurchaseOrderFormV
       delivery_mode: cleanNullable(values.delivery_mode),
       comment: cleanNullable(values.comment),
       total_amount: total,
-      updated_by: profileId,
-    })
-    .eq('id', id)
+  }
 
-  if (error) throw error
-
-  await replaceOrderItems(id, values.items)
-  await replaceNeedLinks(id, values.need_ids ?? [], values.supplier_id, profileId)
-  await addOrderHistory(id, 'modification', 'Commande mise a jour', profileId)
+  const itemRows = values.items.map((item) => ({
+    article_id: item.article_id,
+    quantity_ordered: item.quantity_ordered,
+    unit_id: item.unit_id,
+    stock_unit_id: item.stock_unit_id || null,
+    conversion_factor: item.conversion_factor ?? 1,
+    quantity_ordered_stock: item.quantity_ordered_stock ?? item.quantity_ordered,
+    unit_price: item.unit_price,
+    unit_price_stock: item.unit_price_stock ?? item.unit_price,
+    comment: cleanNullable(item.comment),
+  }))
+  const { error: replaceError } = await supabase.schema('stock').rpc('replace_purchase_order_draft', {
+    p_order_id: id,
+    p_supplier_id: values.supplier_id,
+    p_order_patch: orderPatch,
+    p_items: itemRows,
+    p_need_ids: values.need_ids ?? [],
+    p_request_id: crypto.randomUUID(),
+  })
+  if (replaceError) throw replaceError
 }
 
 async function replaceOrderItems(orderId: string, items: PurchaseOrderFormValues['items']) {
   await assertOrderDraftMutable(orderId)
-  const { error: deleteError } = await supabase.schema('stock').from('purchase_order_items').delete().eq('purchase_order_id', orderId)
-  if (deleteError) throw deleteError
-
   const rows = items.map((item) => ({
-    purchase_order_id: orderId,
     article_id: item.article_id,
     quantity_ordered: item.quantity_ordered,
     unit_id: item.unit_id,
@@ -152,49 +160,35 @@ async function replaceOrderItems(orderId: string, items: PurchaseOrderFormValues
     comment: cleanNullable(item.comment),
   }))
 
-  const { error } = await supabase.schema('stock').from('purchase_order_items').insert(rows)
+  const { error } = await supabase.schema('stock').rpc('replace_purchase_order_items', {
+    p_order_id: orderId,
+    p_items: rows,
+    p_request_id: crypto.randomUUID(),
+  })
   if (error) throw error
 }
 
 async function linkNeeds(orderId: string, needIds: string[], supplierId: string, profileId?: string) {
+  void profileId
   if (needIds.length === 0) return
   const { data: needs, error: needsReadError } = await supabase.schema('stock').from('purchase_needs').select('id, status, decision_status, processing_mode').in('id', needIds)
   if (needsReadError) throw needsReadError
   if ((needs ?? []).length !== needIds.length || (needs ?? []).some((need) => need.status !== 'valide' || (need.decision_status && need.decision_status !== 'pending') || (need.processing_mode && need.processing_mode !== 'none'))) {
     throw new Error('Seuls les besoins valides et non engagés peuvent être liés à une commande')
   }
-  const links = needIds.map((needId) => ({ purchase_order_id: orderId, need_id: needId }))
-  const { error: linkError } = await supabase.schema('stock').from('purchase_order_needs').insert(links)
+  const { error: linkError } = await supabase.schema('stock').rpc('replace_purchase_order_need_links', {
+    p_order_id: orderId,
+    p_need_ids: needIds,
+    p_supplier_id: supplierId,
+    p_request_id: crypto.randomUUID(),
+  })
   if (linkError) throw linkError
-
-  const { error } = await supabase.schema('stock')
-    .from('purchase_needs')
-    .update({ status: 'regroupe', supplier_id: supplierId, updated_by: profileId })
-    .in('id', needIds)
-  if (error) throw error
 
   const { data: groupedNeeds } = await supabase.schema('stock').from('purchase_needs').select('group_id').in('id', needIds)
   const groupIds = [...new Set((groupedNeeds ?? []).map((need) => need.group_id).filter(Boolean))]
   if (groupIds.length > 0) {
     await supabase.schema('stock').from('purchase_groups').update({ status: 'commande_creee' }).in('id', groupIds)
   }
-}
-
-async function replaceNeedLinks(orderId: string, needIds: string[], supplierId: string, profileId?: string) {
-  await assertOrderDraftMutable(orderId)
-  await assertNeedLinksCanBeReplaced(orderId, needIds)
-  const { data: existing, error: existingError } = await supabase.schema('stock').from('purchase_order_needs').select('need_id').eq('purchase_order_id', orderId)
-  if (existingError) throw existingError
-  const oldIds = (existing ?? []).map((item) => item.need_id as string)
-
-  if (oldIds.length > 0) {
-    const { error: releaseError } = await supabase.schema('stock').from('purchase_needs').update({ status: 'valide', updated_by: profileId }).in('id', oldIds)
-    if (releaseError) throw releaseError
-  }
-
-  const { error: deleteError } = await supabase.schema('stock').from('purchase_order_needs').delete().eq('purchase_order_id', orderId)
-  if (deleteError) throw deleteError
-  await linkNeeds(orderId, needIds, supplierId, profileId)
 }
 
 async function assertOrderDraftMutable(orderId: string) {

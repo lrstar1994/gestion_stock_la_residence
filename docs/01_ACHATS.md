@@ -67,6 +67,10 @@ La vue `purchase_actual_price_candidates` est la couche canonique de lecture. Le
 - Prix réel qualifié et RPC de lecture : VALIDÉ MÉTIER ; CODÉ LOCALEMENT ; migration additive 202609230001 non déployée TEST ; VALIDÉ TEST non effectué.
 - Sécurisation locale du Lot A : CODÉ LOCALEMENT. La régénération événementielle rapproche les seuls besoins `a_faire`/`en_cours` et conserve les autres en signalant un écart ; les transitions et remplacements de commandes appliquent des préconditions de statut et de réception. Les garanties transactionnelles côté base et la concurrence restent à préparer avant tout déploiement TEST.
 
+### Garanties serveur du Lot A
+
+Une migration additive en préparation locale (`202609280001_purchase_needs_transactional_guards.sql`) définit des opérations spécialisées pour la régénération événementielle, les transitions opérationnelles événementielles, l'annulation d'un besoin, le remplacement des lignes d'une commande brouillon, le remplacement de ses liens avec les besoins et la mise à jour atomique complète lignes + liens + métadonnées d'une commande brouillon. Les triggers refusent les écritures directes sensibles sur les besoins et les liens de commande lorsque l'appel vient du rôle SQL client ; les RPC `SECURITY DEFINER` conservent les circuits autorisés. Toutes ces opérations utilisent des verrous transactionnels et un `request_id` idempotent ; les décisions Direction restent exclusivement dans `stock.apply_purchase_need_line_decisions` avec PIN. État : **CODÉ LOCALEMENT**, non déployé TEST et non validé TEST.
+
 === SYNCHRO CODEX ===
 Module principal: Achats
 Décisions validées: besoins élémentaires traçables, TVA par ligne, réception au Magasin principal
