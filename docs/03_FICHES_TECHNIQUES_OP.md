@@ -20,6 +20,8 @@ Pour une révision OP à la hausse, les réservations de la version approuvée s
 
 Une seule proposition de révision peut être active en attente de validation par OP. Une nouvelle modification remplace les quantités de cette proposition active, tandis que les demandes précédentes restent dans l’historique. Le calcul repart toujours de la dernière révision approuvée ; les suppléments successifs ne sont pas cumulés.
 
+Le socle SQL STOCK-RES V1 est **VALIDÉ MÉTIER, INSTALLÉ ET VALIDÉ SUR TEST**. Il distingue la réservation principale, les segments de localisation, les allocations de contributions, les snapshots consultatifs et les vérifications transactionnelles. Les quantités communes sont `numeric(14,4)`, les coefficients `numeric(14,6)` et aucun arrondi intermédiaire n'est autorisé. Les RPC article-only RES-2 sont déployées et validées sur TEST, sans activation OP ni parcours physique. Le raccordement OP relève d’INT-1, chantier séparé non déployé. La couverture destinée à Achats devra être vérifiée dans la même transaction que l'affectation, avant toute création de `purchase_needs`. La filiation d'une contribution ne constitue jamais, à elle seule, une autorisation de réaffectation physique.
+
 Si la Direction refuse cette révision, aucune production supplémentaire n’est autorisée et aucune libération automatique, y compris par ancienneté du brouillon, n’est exécutée. Le Chef décide explicitement de libérer ou de maintenir les réservations supplémentaires, avec revue quotidienne et historique de l’OP, de la révision, des quantités, de l’auteur et de la date.
 
 ## Propriété et consommateurs

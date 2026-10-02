@@ -5,7 +5,7 @@ Les points ci-dessous ne sont pas des autorisations de développement.
 | Point | Module propriétaire | Impact | État |
 |---|---|---|---|
 | Définir le modèle OP autonome : objet, statuts, validations, planification, prévalidation des versions FT et indépendance de la validation des besoins Achats | Fiches techniques / Production | FT, besoins, stock, consommation | VALIDÉ MÉTIER partiel ; CODÉ LOCALEMENT non établi ; DÉPLOYÉ TEST non établi ; VALIDÉ TEST non établi |
-| Définir le contrat commun de réservation OP : quantités physiques/engagées/réservées, libération Chef à la baisse, idempotence, audit et propagation aux disponibilités | Stocks + FT-OP | autres OP, Ventes, achats engagés | VALIDÉ MÉTIER ; CODÉ LOCALEMENT non établi ; DÉPLOYÉ TEST non établi ; VALIDÉ TEST non établi |
+| Raccorder les parcours protégés après la clôture de RES-2 | Stocks + FT-OP | Ventes, achats engagés, transferts | RES-2 DÉPLOYÉ TEST, HISTORIQUE SYNCHRONISÉ, VALIDÉ TEST et CLÔTURÉ ; socle article-only sans activation OP/VENTES/transferts ; INT-1 séparé et non déployé |
 | Implémenter le traitement des réservations supplémentaires après refus Direction : décision explicite du Chef, maintien temporaire ou libération, revue quotidienne et audit, sans libération automatique ni expiration liée à l’âge du brouillon | Stocks + FT-OP | disponibilités, Ventes, production | VALIDÉ MÉTIER ; CODÉ LOCALEMENT non établi ; DÉPLOYÉ TEST non établi ; VALIDÉ TEST non établi |
 | Définir techniquement une seule proposition de révision active par OP, son actualisation, son historique et le recalcul sans cumul des propositions précédentes | FT-OP + Stocks | réservations, Achats, disponibilités | VALIDÉ MÉTIER ; CODÉ LOCALEMENT non établi ; DÉPLOYÉ TEST non établi ; VALIDÉ TEST non établi |
 | Vérifier l’historique TEST des migrations Stocks déplacées dans `migrations_hold` | Stocks / infrastructure | RLS, transferts, inventaires | VALIDÉ MÉTIER ; CODÉ LOCALEMENT ; DÉPLOYÉ TEST déclaré mais preuve CLI incomplète ; VALIDÉ TEST non établi |
@@ -25,6 +25,21 @@ Les points ci-dessous ne sont pas des autorisations de développement.
 | Confirmer objectuellement puis valider A1 à A6 dans l’ordre 210001 → 210005 | FT / infrastructure | workflow, snapshots, import, photo, validations | VALIDÉ MÉTIER ; CODÉ LOCALEMENT ; DÉPLOYÉ TEST non confirmé par l’audit documentaire courant ; VALIDÉ TEST non établi |
 | Décider si une validation Chef doit devenir une action sensible avec PIN | FT / sécurité | validation technique | point métier ouvert ; A6 utilise l’identité de session active sans inventer de PIN |
 | Maintenir une seule documentation officielle | Gouvernance | tous | CODÉ LOCALEMENT : ce dossier ; VALIDÉ TEST documentaire à confirmer par revue équipe |
+
+## RES-1 et RES-2 installés ; intégrations encore exclues
+
+Le lot RES-1 est installé sur TEST sans activer les réservations opérationnelles des OP. Il comprend uniquement :
+
+1. une table de verrouillage par article et localisation ;
+2. une table centrale d'idempotence (`request_id`, opération, hash, résultat) ;
+3. une réservation principale liée aux objets OP futurs ;
+4. des segments par localisation ou transit ;
+5. des allocations de contributions et snapshots ;
+6. un journal append-only des opérations et décisions.
+
+Les contraintes séparent cible, réservation courante, quantité délivrée et cumuls historiques. Le journal n'impose ni unicité globale de `request_id`, ni unicité `(reservation_id, change_sequence)` ; `change_sequence` reste réservé aux changements de cible.
+
+RES-2 (`202610010001`) est DÉPLOYÉ TEST, HISTORIQUE SYNCHRONISÉ, VALIDÉ TEST et CLÔTURÉ : 234 contrôles obligatoires PASS, 1 INFO PASS, 0 FAIL, ROLLBACK confirmé et code 0. Il reste article-only et n’active ni OP, ni VENTES, ni transferts. INT-1 est un chantier séparé, présent seulement localement et non déployé sur TEST. Restent hors activation : couverture Achats, création de `purchase_needs`, contributions OP complètes, consommation de production et raccordement de tous les writers physiques au verrou commun.
 
 ## Contradictions à surveiller
 
