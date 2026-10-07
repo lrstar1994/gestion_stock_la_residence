@@ -72,6 +72,33 @@ Les dépendances Stocks consommées par le Lot A FT sont **VALIDÉES TEST** : `a
 - Transferts groupés/brouillons : VALIDÉ MÉTIER ; CODÉ LOCALEMENT ; DÉPLOYÉ TEST déclaré pour 180002/180004 ; VALIDÉ TEST à confirmer par scénarios complets.
 - Articles toutes localisations : VALIDÉ MÉTIER ; CODÉ LOCALEMENT dans 180001 ; migration isolée localement, statut de déploiement à vérifier.
 
+### INT-1 — séparation d’identités Step 3A.1 (LOCAL HOLD)
+
+`op_reservation_operation_items.prepared_item_id` identifie de façon stable un
+item préparé ; il n’est jamais transmis à RES-2. L’identité préparée conserve
+exactement la dérivation 3A : UUID déterministe issu de
+`operation_id + production_order_line_id + usage_key + contribution_id +
+contribution_snapshot_id + "prepared" + resource_id`. La colonne
+`child_request_id` est réservée à un effet physique réel ; elle reste NULL pour
+les entrées `prepared` et les entrées analytiques sans effet. Une ligne d’effet
+référence son item source par `prepared_parent_item_id`.
+
+Chaque requête physique future RES-2 dérive son propre UUIDv8 déterministe de
+SHA-256 sur le JSONB canonique :
+`{contract:"INT-1/3A.1/RES-2-PHYSICAL-EFFECT", operation_id,
+prepared_item_id, effect_kind, coordinates}`. Les effets admis sont
+`reserve_resource`, `change_reservation_target` et `release_reservation`.
+Coordonnées logiques : réserve = type/ressource/localisation ; changement de
+cible = réservation/localisation/séquence ; libération = réservation/segment
+(NULL explicite si applicable). Quantités et autres valeurs de payload sont
+exclues de l’identité : RES-2 les lie à son hash de payload et rejette un retry
+au payload différent. Même opération/effet/coordonnées donne le même ID ; les
+trois types d’effet et des coordonnées différentes donnent des IDs distincts.
+
+La migration `202610080001_int1_physical_effect_idempotency.sql` et ses tests
+restent en `migrations_hold` / locaux. Cette étape ne fait aucun appel RES-2,
+n’active pas INT-1 et ne change ni OP-1/OP-2 ni le verrou décisionnel OP.
+
 === SYNCHRO CODEX ===
 Module principal: Stocks / Inventaires
 Décisions validées: stock dérivé des mouvements, accès par localisation, transit technique, contrôle Direction
