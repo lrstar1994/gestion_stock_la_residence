@@ -12,6 +12,9 @@ node_modules
 .agents
 dist
 docs
+!docs/
+docs/*
+!docs/00_GOUVERNANCE_DEVELOPPEMENT.md
 dist-ssr
 *.local
 .env
